@@ -158,7 +158,20 @@ body.dragging *{pointer-events:none}
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
 /* ---------------- bench rail ---------------- */
-.rail{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:1px}
+/* Хаялбарын жагсаалт — агуулгаараа. `flex:1` үед цөөн мөртэй байхад
+   панелийн доор том хоосон зай үлддэг байв. */
+.rail{min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:1px}
+
+/* Идэвхтэй шүүлт */
+.fbar{display:flex;align-items:center;gap:8px;flex:none;
+  background:var(--ui-soft);border:1px solid var(--ui-soft);border-radius:var(--r);
+  padding:6px 8px 6px 10px}
+.fk{font:600 8.5px/1.4 "Golos Text",sans-serif;letter-spacing:.07em;
+  text-transform:uppercase;color:var(--ui-ink)}
+.fbar b{font:500 12px/1.3 "IBM Plex Mono",monospace;color:var(--ui-ink)}
+.fx{margin-left:auto;width:20px;height:20px;border-radius:5px;color:var(--ui-ink);
+  display:grid;place-items:center;font-size:11px}
+.fx:hover{background:var(--surface-2)}
 
 /* Түвшин тус бүрийн олборлолт — багана нь БАРУУН талын тэнхлэгээс
    ЗҮҮН тийш ургана, хаялбарын өндөр нь баруун талд бичигдэнэ. */

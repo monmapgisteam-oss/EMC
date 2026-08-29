@@ -29,7 +29,7 @@ import {
   BU_TYPE, BLD_COLOR, PILE_COLOR, PILE_HEX, PILE_EDGE, PILE_EDGE_HEX,
   PILE2COL, TRUCK_COLOR, pileWhere,
 } from "@/lib/config";
-import { cuOf, metalSum, moOf, sumCol, GRADE_BREAKS, GRADE_RANGE } from "@/lib/excel";
+import { cuOf, metalSum, moOf, sumCol } from "@/lib/excel";
 import {
   loadDests, loadParked, loadTailLine, FlowSim,
   type Dest, type Truck,
@@ -962,7 +962,6 @@ export default function MineScene() {
                 style={{ marginLeft: "auto" }}>{t.btnIso}</button>
         <button className="ghost sm" aria-pressed={layersOpen}
                 onClick={() => setLayersOpen((v) => !v)}>{t.btnLayers}</button>
-        <span className="src live">ArcGIS 4.34</span>
       </div>
 
       <div className="mapwrap">
@@ -1011,21 +1010,6 @@ export default function MineScene() {
             {pitMsg.text && <div className={"lbnote " + pitMsg.cls}>{pitMsg.text}</div>}
           </div>
         )}
-
-        <div className="gradekey">
-          {/* Толгойд бодит муж, доор нь квантилийн завсрууд. Урьд нь
-              0.15 / 0.50 гэсэн гараар бичсэн хоёр тоо байв. */}
-          <span>{t.legGrade} · {GRADE_RANGE[0].toFixed(2)}–{GRADE_RANGE[1].toFixed(2)}</span>
-          <div className="ramp">
-            {[1, 2, 3, 4, 5, 6].map((i) => <i key={i} style={{ background: `var(--g${i})` }} />)}
-          </div>
-          <div className="rax">
-            {GRADE_BREAKS.map((b, i) => (
-              <b key={i} style={{ left: `${((i + 1) / 6) * 100}%` }}>{b.toFixed(2)}</b>
-            ))}
-          </div>
-          <div className="rlegoff"><i /><span>{t.legOff}</span></div>
-        </div>
 
         <div className={"loading" + (ready ? " done" : "")}>
           <span className="spin" />

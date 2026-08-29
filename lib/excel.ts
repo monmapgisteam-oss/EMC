@@ -69,11 +69,11 @@ export function moOf(m: number, tuv?: number): number {
 }
 
 /** Доод зурвасын өгөгдөл: БҮ-т · овоолгод (балансын) · овоолгод (балансын бус) */
-export function monthlyFlow(m: number): [number, number, number] {
+export function monthlyFlow(m: number, tuv?: number): [number, number, number] {
   return [
-    sumCol(m, C.BU),
-    sumCol(m, C.OV12) + sumCol(m, C.OV14) + sumCol(m, C.OV8A),
-    sumCol(m, C.OV9A) + sumCol(m, C.OV9B),
+    sumCol(m, C.BU, tuv),
+    sumCol(m, C.OV12, tuv) + sumCol(m, C.OV14, tuv) + sumCol(m, C.OV8A, tuv),
+    sumCol(m, C.OV9A, tuv) + sumCol(m, C.OV9B, tuv),
   ];
 }
 

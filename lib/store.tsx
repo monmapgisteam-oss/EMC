@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useEffect, useMemo, useState,
          type Dispatch, type ReactNode, type SetStateAction } from "react";
-import { T, LISTS, type Lang, type Dict } from "./i18n";
+import { T, type Lang, type Dict } from "./i18n";
 
 /** Баруун талын картад юу харуулах вэ */
 export type Selection =
@@ -41,7 +41,6 @@ interface Store {
   tip: TipState | null;
   setTip: Dispatch<SetStateAction<TipState | null>>;
   t: Dict;
-  lists: (typeof LISTS)["mn"];
 }
 
 const Ctx = createContext<Store | null>(null);
@@ -87,7 +86,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       m, setM, lang, setLang, sel, setSel, blk, setBlk, tip, setTip,
       theme, setTheme,
       t: T[lang] as Dict,
-      lists: LISTS[lang] as (typeof LISTS)["mn"],
     }),
     [m, lang, sel, blk, tip, theme],
   );

@@ -4,7 +4,7 @@ import dynamic from "next/dynamic";
 import { useEffect, useRef, useState } from "react";
 import { useStore } from "@/lib/store";
 import { ROMAN, MON_L } from "@/lib/i18n";
-import { BenchLine, BenchRail, DestChart, DetailCard, GradeChart, Kpis, MetalChart,
+import { BenchLine, BenchRail, DestChart, DetailCard, FilterBar, GradeChart, Kpis, MetalChart,
          Timeline, Tooltip } from "./Panels";
 
 /* ArcGIS Maps SDK бол бүхэлдээ browser талын сан — SSR-ээс салгана.
@@ -27,7 +27,7 @@ const MineScene = dynamic(() => import("./MineScene"), {
 });
 
 export default function Shell() {
-  const { m, setM, lang, setLang, t, lists, setSel, theme, setTheme } = useStore();
+  const { m, setM, lang, setLang, t, setSel, theme, setTheme } = useStore();
 
   /* Хажуугийн баганын өргөн — чирж өөрчилнө. Сонголт нь localStorage-д
      хадгалагдана. Дундах багана (газрын зураг) үлдсэн зайг эзэлнэ. */
@@ -63,7 +63,6 @@ export default function Shell() {
   }
   const colLRef = useRef(colL); colLRef.current = colL;
   const colRRef = useRef(colR); colRRef.current = colR;
-  const [drawer, setDrawer] = useState(false);
 
   useEffect(() => {
     document.documentElement.lang = lang;
@@ -71,7 +70,7 @@ export default function Shell() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") { setDrawer(false); setSel(null); }
+      if (e.key === "Escape") setSel(null);
       if (e.key === "ArrowLeft" && m > 1) setM(m - 1);
       if (e.key === "ArrowRight" && m < 6) setM(m + 1);
     };
@@ -79,13 +78,6 @@ export default function Shell() {
     return () => window.removeEventListener("keydown", onKey);
   }, [m, setM, setSel]);
 
-  const cards: { k: keyof typeof lists; title: string; tag: string }[] = [
-    { k: "c0", title: t.c0, tag: t.tagSrc },
-    { k: "c1", title: t.c1, tag: "JOIN" },
-    { k: "c2", title: t.c2, tag: "LIVE" },
-    { k: "c3", title: t.c3, tag: t.wait },
-    { k: "c4", title: t.c4, tag: "?" },
-  ];
 
   return (
     <div className="app">
@@ -107,7 +99,6 @@ export default function Shell() {
           ))}
         </div>
 
-        <button className="ghost" onClick={() => setDrawer(true)}>{t.btnSrc}</button>
         <div className="seg" role="group" aria-label={t.thTheme}>
           {/* «Авто» хасагдсан — зөвхөн Өдөр / Шөнө */}
           {(["light", "dark"] as const).map((k) => (
@@ -131,7 +122,9 @@ export default function Shell() {
             <div className="pb tight"><BenchLine /></div>
           </div>
 
-          <div className="panel" style={{ flex: 1 }}>
+          {/* `flex:1` байсан нь хаялбар цөөн үед панелийн доор том хоосон
+              зай үлдээж байв. Одоо агуулгаараа багтана, шаардвал агшина. */}
+          <div className="panel" style={{ flex: "0 1 auto" }}>
             <div className="ph">
               <h2>{t.pBench}</h2>
               <span className="curamp" title="Cu %">
@@ -155,6 +148,7 @@ export default function Shell() {
         <div className="split" onPointerDown={(e) => startDrag(e, "L")} />
 
         <div className="col">
+          <FilterBar />
           <Kpis />
           <div className="panel map" style={{ flex: 1 }}>
             <MineScene />
@@ -180,29 +174,6 @@ export default function Shell() {
           </div>
         </div>
       </div>
-
-      {/* -------------------------------------------------------- самбар */}
-      <div className={"scrim" + (drawer ? " on" : "")} onClick={() => setDrawer(false)} />
-      <aside className={"drawer" + (drawer ? " on" : "")} aria-hidden={!drawer}>
-        <div className="dh">
-          <h2>{t.drTitle}</h2>
-          <div style={{ flex: 1 }} />
-          <button className="ghost" onClick={() => setDrawer(false)}>✕</button>
-        </div>
-        <div className="dbody">
-          <p>{t.drLead}</p>
-          {cards.map((c) => (
-            <div className={"card" + (c.k === "c4" ? " warn" : "")} key={c.k}>
-              <h3><span>{c.title}</span><em>{c.tag}</em></h3>
-              <ul>
-                {(lists[c.k] as readonly string[]).map((s, i) => (
-                  <li key={i} dangerouslySetInnerHTML={{ __html: s }} />
-                ))}
-              </ul>
-            </div>
-          ))}
-        </div>
-      </aside>
 
       <Tooltip />
     </div>

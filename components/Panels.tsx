@@ -8,9 +8,21 @@ import { fmt, gradeColor } from "@/lib/format";
 import { MON_L, ROMAN } from "@/lib/i18n";
 import { useEffect, useRef, useState } from "react";
 
+/* ==========================================================================
+   ХОЛБОГДСОН ШҮҮЛТ. Бүх чарт нэг Excel-ээс уншдаг тул нэг дор шүүгдэх
+   ёстой: хаялбар сонгоход бусад бүх чарт ЗӨВХӨН тэр түвшний тоог үзүүлнэ.
+   Сонголт нь `sel` (store) — хаялбарын жагсаалт болон газрын зургаас
+   хоёулангаас нь тавигдана.
+   ========================================================================== */
+function useTuv(): number | undefined {
+  const { sel } = useStore();
+  return sel?.kind === "bench" ? sel.tuv : undefined;
+}
+
 /* ------------------------------------------------------------------ KPI */
 export function Kpis() {
   const { m, t } = useStore();
+  const tuv = useTuv();
   const p = m > 1 ? m - 1 : null;
   /* Дөрвөн үзүүлэлт нь Excel-ийн ДӨРВӨН баганаас шууд:
        NOOC   — олборлосон үйлдвэрлэлийн нөөц (захын агуулга 0.25 %)
@@ -26,8 +38,8 @@ export function Kpis() {
   return (
     <div className="kpis">
       {defs.map((o) => {
-        const v = sumCol(m, o.ci);
-        const prev = p ? sumCol(p, o.ci) : null;
+        const v = sumCol(m, o.ci, tuv);
+        const prev = p ? sumCol(p, o.ci, tuv) : null;
         const pc = prev ? ((v - prev) / prev) * 100 : null;
         return (
           <div className="kpi" key={o.k}>
@@ -52,19 +64,20 @@ export function Kpis() {
 /* ------------------------------------------------------- түвшний рейл */
 export function BenchRail() {
   const { m, t, lang, sel, setSel, setBlk, setTip } = useStore();
-  /* БҮХ хаялбарыг харуулна — мэдээлэлгүй нь бүдэг шошготой. Ингэснээр
-     питийн бүтэн гүнийг хардаг ба тухайн сард аль түвшинд ажилласан нь
-     ялгарна. Багана нь баруун талын тэнхлэгээс ЗҮҮН тийш ургана. */
-  const tot = ELEV.reduce((a2, e) => a2 + sumCol(m, C.NIIT, e), 0) || 1;
-  const mx = Math.max(...ELEV.map((e) => sumCol(m, C.NIIT, e)), 1);
+  /* Зөвхөн тухайн сард ХӨДӨЛГӨӨНТЭЙ түвшин. Мэдээлэлгүй хаялбарыг бүдэг
+     шошготой үлдээж үзсэн боловч жагсаалтын талыг эзэлж, утгатай мөрүүд
+     доош түлхэгдэж байв. Багана нь баруун талын тэнхлэгээс ЗҮҮН тийш
+     ургана. */
+  const act = benchesOf(m);
+  const tot = act.reduce((a2, e) => a2 + sumCol(m, C.NIIT, e), 0) || 1;
+  const mx = Math.max(...act.map((e) => sumCol(m, C.NIIT, e)), 1);
 
   return (
     <div className="rail">
-      {ELEV.map((e) => {
+      {act.map((e) => {
         const kt = sumCol(m, C.NIIT, e);
         const cu = cuOf(m, e);
         const w = (kt / mx) * 100;
-        if (!kt) return <div className="bench off" key={e}><span className="bl">{e}</span></div>;
         return (
           <button
             key={e}
@@ -100,17 +113,15 @@ export function BenchRail() {
 }
 
 /* ==========================================================================
-   Түвшин бүрийн олборлолт ба уулын цул — шугаман чарт.
+   Түвшин бүрийн нөөц ба хүдэр — шугаман чарт.
    --------------------------------------------------------------------------
-   ЖИЧ: гурван цуврал НЭГ тэнхлэг дээр байгаа ч НЭГЖ нь ижил биш —
-   «Олборлосон нөөц», «Нийт хүдэр» нь мян.тн, «Уулын цул» нь мян.м³.
-   Тиймээс тэдгээрийг ХЭМЖЭЭГЭЭР нь бус, ХЭЛБЭРЭЭР нь (аль түвшинд их,
-   аль түвшинд бага) харьцуулж унших ёстой. Нэгжийг тайлбарт бичив.
+   «Уулын цул» цуврал ХАСАГДСАН: тэр нь мян.м³ бөгөөд бусад хоёр нь
+   мян.тн — өөр нэгжийг нэг тэнхлэгт тавих нь буруу байв. Одоо хоёулаа
+   мян.тн тул хэмжээгээр нь шууд харьцуулна.
    ========================================================================== */
 const BSERIES: { ci: number; c: string; nm: [string, string]; u: "kt" | "m3" }[] = [
   { ci: C.NOOC, c: "var(--s3)", nm: ["Олборлосон нөөц", "Mined reserve"], u: "kt" },
   { ci: C.NIIT, c: "var(--s1)", nm: ["Нийт хүдэр", "Total ore"], u: "kt" },
-  { ci: C.TSUL, c: "var(--s2)", nm: ["Уулын цул", "Total rock"], u: "m3" },
 ];
 
 export function BenchLine() {
@@ -194,13 +205,6 @@ export function DetailCard() {
 
     return (
       <div className="pb">
-          <div className="joinbar">
-            <span className="jk">{`Сар ${m}`}</span>
-            <span className="jk hi">{`Түвшин ${sel.tuv}`}</span>
-            {cur && <span className="jk hi">{`Блок ${cur}`}</span>}
-            <span className="jarrow">→</span>
-            <span className="jk">{cur === "БҮ" ? t.bu : BLK2PILE[cur ?? ""] ?? "—"}</span>
-          </div>
           <div className="blkchips">
             {blks.map((b) => (
               <button key={b} aria-pressed={b === cur} onClick={() => setBlk(b)}>
@@ -262,13 +266,6 @@ export function DetailCard() {
 
   return (
     <div className="pb">
-        <div className="joinbar">
-          <span className="jk">{`Сар ${m}`}</span>
-          <span className="jk">{lang === "mn" ? "Багана" : "Column"}</span>
-          <span className="jk hi">{COL_NAMES[lang][ci].split("—").pop()?.trim()}</span>
-          <span className="jarrow">→</span>
-          <span className="jk">{sel.featName}</span>
-        </div>
         <div className="dtable">
           {!rows.length ? (
             <div className="empty">{t.noData}</div>
@@ -329,10 +326,25 @@ const DEST_ROWS: { ci: number; nm: [string, string]; c: string }[] = [
   { ci: C.HOOSON, nm: ["Овоолго №1, 4, 11", "Piles 1, 4, 11"],  c: TRUCK_COLOR.waste },
 ];
 
+/** Идэвхтэй шүүлтийг харуулж, цуцлах мөр */
+export function FilterBar() {
+  const { sel, setSel, setBlk, t } = useStore();
+  if (sel?.kind !== "bench") return null;
+  return (
+    <div className="fbar">
+      <span className="fk">{t.filterOn}</span>
+      <b>{t.dBench} {sel.tuv} м</b>
+      <button className="fx" onClick={() => { setSel(null); setBlk(null); }}
+              title={t.filterOff}>✕</button>
+    </div>
+  );
+}
+
 export function DestChart() {
   const { m, t, lang, setTip } = useStore();
+  const tuv = useTuv();
   const li = lang === "mn" ? 0 : 1;
-  const rows = DEST_ROWS.map((d) => ({ ...d, v: sumCol(m, d.ci) }));
+  const rows = DEST_ROWS.map((d) => ({ ...d, v: sumCol(m, d.ci, tuv) }));
   const tot = rows.reduce((a, r) => a + r.v, 0) || 1;
   const mx = Math.max(...rows.map((r) => r.v), 1);
 
@@ -371,7 +383,8 @@ export function Timeline() {
   const { m, setM, t, lang, setTip } = useStore();
   const cols = ["var(--s1)", "var(--s2)", "var(--s3)"];
   const names = [t.sBu, t.sOv, t.sOv2];
-  const data = [1, 2, 3, 4, 5, 6].map((mm) => monthlyFlow(mm));
+  const tuv = useTuv();
+  const data = [1, 2, 3, 4, 5, 6].map((mm) => monthlyFlow(mm, tuv));
   const totals = data.map((d) => d[0] + d[1] + d[2]);
 
   /* ХЭМЖҮҮР: өмнө нь баганын урт хамгийн их сарын харьцаагаар тооцогдож
@@ -544,8 +557,9 @@ function AreaPair({
 
 /** Агуулга, % — Cu ба Mo, сар тус бүрээр */
 export function GradeChart() {
+  const tuv = useTuv();
   const rows = [1, 2, 3, 4, 5, 6].map((mm) => ({
-    key: ROMAN[mm - 1], a: cuOf(mm), b: moOf(mm),
+    key: ROMAN[mm - 1], a: cuOf(mm, tuv), b: moOf(mm, tuv),
   }));
   return <AreaPair rows={rows} aLabel="Cu %" bLabel="Mo %" aUnit="%" bUnit="%"
                    aDec={3} bDec={4} aColor="var(--g5)" bColor="var(--s3)" />;
@@ -553,10 +567,11 @@ export function GradeChart() {
 
 /** Металл, тонн — Cu ба Mo, сар тус бүрээр */
 export function MetalChart() {
+  const tuv = useTuv();
   const rows = [1, 2, 3, 4, 5, 6].map((mm) => ({
     key: ROMAN[mm - 1],
-    a: metalSum(mm, "cut", C.NIIT),
-    b: metalSum(mm, "mot", C.NIIT),
+    a: metalSum(mm, "cut", C.NIIT, tuv),
+    b: metalSum(mm, "mot", C.NIIT, tuv),
   }));
   return <AreaPair rows={rows} aLabel="Cu т" bLabel="Mo т" aUnit="т" bUnit="т"
                    aDec={0} bDec={0} aColor="var(--g5)" bColor="var(--s3)" />;
