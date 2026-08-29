@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useMemo, useState,
+import { createContext, useContext, useEffect, useMemo, useState,
          type Dispatch, type ReactNode, type SetStateAction } from "react";
 import { T, LISTS, type Lang, type Dict } from "./i18n";
 
@@ -24,9 +24,14 @@ export interface TipState {
   hint?: string;
 }
 
+/** «auto» = үйлдлийн системийн тохиргоог дагана */
+export type Theme = "auto" | "light" | "dark";
+
 interface Store {
   m: number;
   setM: (m: number) => void;
+  theme: Theme;
+  setTheme: (t: Theme) => void;
   lang: Lang;
   setLang: (l: Lang) => void;
   sel: Selection;
@@ -47,6 +52,29 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [sel, setSel] = useState<Selection>(null);
   const [blk, setBlk] = useState<string | null>(null);
   const [tip, setTip] = useState<TipState | null>(null);
+  const [theme, setTheme] = useState<Theme>("auto");
+
+  /* Хадгалсан сонголтыг сэргээнэ. Серверийн рендэрт localStorage
+     байхгүй тул зөвхөн монтлогдсоны дараа уншина. */
+  useEffect(() => {
+    const v = localStorage.getItem("emc-theme");
+    if (v === "light" || v === "dark") setTheme(v);
+  }, []);
+
+  /* `data-theme` нь app/globals.css дахь :root[data-theme=...]-ыг асаана.
+     «auto» үед атрибутыг ХАСНА — тэгвэл prefers-color-scheme дагана. */
+  useEffect(() => {
+    const el = document.documentElement;
+    if (theme === "auto") {
+      el.removeAttribute("data-theme");
+      localStorage.removeItem("emc-theme");
+    } else {
+      el.setAttribute("data-theme", theme);
+      localStorage.setItem("emc-theme", theme);
+    }
+    /* ArcGIS-ийн симболууд өнгөө үүсэх үедээ авдаг тул мэдэгдэнэ */
+    window.dispatchEvent(new CustomEvent("emc-theme"));
+  }, [theme]);
 
   /* Сар солиход блокийн сонголт хүчингүй болно */
   const setM = (next: number) => {
@@ -57,10 +85,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const value = useMemo<Store>(
     () => ({
       m, setM, lang, setLang, sel, setSel, blk, setBlk, tip, setTip,
+      theme, setTheme,
       t: T[lang] as Dict,
       lists: LISTS[lang] as (typeof LISTS)["mn"],
     }),
-    [m, lang, sel, blk, tip],
+    [m, lang, sel, blk, tip, theme],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

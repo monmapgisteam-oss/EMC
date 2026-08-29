@@ -1,10 +1,11 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useStore } from "@/lib/store";
 import { ROMAN, MON_L } from "@/lib/i18n";
-import { BenchRail, DetailCard, GradeChart, Kpis, MetalChart, Timeline, Tooltip } from "./Panels";
+import { BenchLine, BenchRail, DestChart, DetailCard, GradeChart, Kpis, MetalChart,
+         Timeline, Tooltip } from "./Panels";
 
 /* ArcGIS Maps SDK бол бүхэлдээ browser талын сан — SSR-ээс салгана.
    Түр орлуулагч нь MineScene-тэй ЯГ ИЖИЛ бүтэцтэй байх ёстой: эс тэгвэл
@@ -26,7 +27,42 @@ const MineScene = dynamic(() => import("./MineScene"), {
 });
 
 export default function Shell() {
-  const { m, setM, lang, setLang, t, lists, setSel } = useStore();
+  const { m, setM, lang, setLang, t, lists, setSel, theme, setTheme } = useStore();
+
+  /* Хажуугийн баганын өргөн — чирж өөрчилнө. Сонголт нь localStorage-д
+     хадгалагдана. Дундах багана (газрын зураг) үлдсэн зайг эзэлнэ. */
+  const [colL, setColL] = useState(350);
+  const [colR, setColR] = useState(376);
+  useEffect(() => {
+    const l = +(localStorage.getItem("emc-col-l") || 0);
+    const r = +(localStorage.getItem("emc-col-r") || 0);
+    if (l >= 240) setColL(Math.min(l, 620));
+    if (r >= 240) setColR(Math.min(r, 620));
+  }, []);
+
+  function startDrag(e: React.PointerEvent, side: "L" | "R") {
+    e.preventDefault();
+    const x0 = e.clientX;
+    const w0 = side === "L" ? colL : colR;
+    const move = (ev: PointerEvent) => {
+      const d = side === "L" ? ev.clientX - x0 : x0 - ev.clientX;
+      const w = Math.max(240, Math.min(620, w0 + d));
+      if (side === "L") setColL(w); else setColR(w);
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      document.body.classList.remove("dragging");
+      /* Хадгалалт нь move бүрт биш, чирч дуусахад */
+      const cur = side === "L" ? "emc-col-l" : "emc-col-r";
+      localStorage.setItem(cur, String(side === "L" ? colLRef.current : colRRef.current));
+    };
+    document.body.classList.add("dragging");
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  }
+  const colLRef = useRef(colL); colLRef.current = colL;
+  const colRRef = useRef(colR); colRRef.current = colR;
   const [drawer, setDrawer] = useState(false);
 
   useEffect(() => {
@@ -56,11 +92,9 @@ export default function Shell() {
       {/* ---------------------------------------------------------- толгой */}
       <header className="head">
         <div className="brand">
-          <div className="mark">Cu</div>
-          <div>
-            <b>{t.appName}</b>
-            <span>{t.appOrg}</span>
-          </div>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img className="logo" src="/logo.svg" alt="Erdenet Mining Corporation" />
+          <b>{t.appName}</b>
         </div>
 
         <div className="hspacer" />
@@ -74,6 +108,15 @@ export default function Shell() {
         </div>
 
         <button className="ghost" onClick={() => setDrawer(true)}>{t.btnSrc}</button>
+        <div className="seg" role="group" aria-label={t.thTheme}>
+          {/* «Авто» хасагдсан — зөвхөн Өдөр / Шөнө */}
+          {(["light", "dark"] as const).map((k) => (
+            <button key={k} aria-pressed={theme === k} onClick={() => setTheme(k)}
+                    title={k === "light" ? t.thLight : t.thDark}>
+              {k === "light" ? "☀" : "☾"}
+            </button>
+          ))}
+        </div>
         <div className="seg" role="group" aria-label="Language">
           <button aria-pressed={lang === "mn"} onClick={() => setLang("mn")}>МН</button>
           <button aria-pressed={lang === "en"} onClick={() => setLang("en")}>EN</button>
@@ -81,11 +124,20 @@ export default function Shell() {
       </header>
 
       {/* ------------------------------------------------------------ гол */}
-      <div className="main">
+      <div className="main" style={{ gridTemplateColumns: `${colL}px 6px minmax(0,1fr) 6px ${colR}px` }}>
         <div className="col">
-          <Kpis />
+          <div className="panel" style={{ flex: "none" }}>
+            <div className="ph"><h2>{t.chBench2}</h2></div>
+            <div className="pb tight"><BenchLine /></div>
+          </div>
+
           <div className="panel" style={{ flex: 1 }}>
-            <div className="ph"><h2>{t.pBench}</h2></div>
+            <div className="ph">
+              <h2>{t.pBench}</h2>
+              <span className="curamp" title="Cu %">
+                {[1, 2, 3, 4, 5, 6].map((i) => <i key={i} style={{ background: `var(--g${i})` }} />)}
+              </span>
+            </div>
             <div className="pb tight"><BenchRail /></div>
           </div>
 
@@ -100,16 +152,25 @@ export default function Shell() {
           </div>
         </div>
 
+        <div className="split" onPointerDown={(e) => startDrag(e, "L")} />
+
         <div className="col">
+          <Kpis />
           <div className="panel map" style={{ flex: 1 }}>
             <MineScene />
           </div>
         </div>
 
+        <div className="split" onPointerDown={(e) => startDrag(e, "R")} />
+
         <div className="col">
           <div className="panel" style={{ flex: "none" }}>
             <div className="ph"><h2>{t.tlTitle}</h2></div>
             <div className="pb tight"><Timeline /></div>
+          </div>
+          <div className="panel" style={{ flex: "none" }}>
+            <div className="ph"><h2>{t.chDest}</h2></div>
+            <div className="pb tight"><DestChart /></div>
           </div>
           <div className="panel" style={{ flex: 1 }}>
             <div className="ph">

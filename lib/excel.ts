@@ -5,15 +5,15 @@
 import raw from "@/public/data/excel.json";
 import { C } from "./config";
 
-export type Measure = "kt" | "cu" | "cut" | "mo" | "mot";
-export type Group = Record<Measure, number[]>;
+type Measure = "kt" | "cu" | "cut" | "mo" | "mot";
+type Group = Record<Measure, number[]>;
 
-export const G = raw as unknown as Record<string, Group>;
+const G = raw as unknown as Record<string, Group>;
 
 const KEYS = Object.keys(G);
 
 /** Тухайн сарын бүх түлхүүр */
-export function keysOf(m: number): string[] {
+function keysOf(m: number): string[] {
   return KEYS.filter((k) => parseInt(k, 10) === m);
 }
 
@@ -76,3 +76,32 @@ export function monthlyFlow(m: number): [number, number, number] {
     sumCol(m, C.OV9A) + sumCol(m, C.OV9B),
   ];
 }
+
+/* ==========================================================================
+   Cu агуулгын өнгөний ангилал — ӨГӨГДЛӨӨС тооцно
+   --------------------------------------------------------------------------
+   Урьд нь `gradeVar` дотор 0.15–0.50 гэсэн ГАРААР бичсэн шугаман муж байв.
+   Excel-ийн бодит Cu муж 0.010–1.077: утгуудын 12.2 % нь 0.15-аас бага,
+   8.5 % нь 0.50-аас их байсан тул тав тутмын нэг утга хамгийн цайвар эсвэл
+   хамгийн бараан өнгөнд наалдаж, ялгаа нь бүрэн алдагдаж байсан.
+
+   Тархалт нь баруун тийш хазайсан тул тэнцүү өргөнтэй муж биш КВАНТИЛИЙН
+   ангилал ашиглана: 872 утгыг зургаан тэнцүү ТООТОЙ анги болгож хуваана
+   (144–147 утга тус бүрд). Ямар ч утга хязгаарт наалдахгүй.
+   ========================================================================== */
+export const GRADE_BREAKS: number[] = (() => {
+  const v: number[] = [];
+  for (const k of KEYS) for (const c of G[k].cu) if (c > 0) v.push(c);
+  v.sort((a, b) => a - b);
+  if (v.length < 6) return [0.17, 0.24, 0.32, 0.38, 0.43];
+  const q = (t: number) => v[Math.min(v.length - 1, Math.floor(t * v.length))];
+  return [1, 2, 3, 4, 5].map((i) => q(i / 6));
+})();
+
+/** Хамгийн бага / их Cu утга — тайлбарын үзүүрт */
+export const GRADE_RANGE: [number, number] = (() => {
+  const v: number[] = [];
+  for (const k of KEYS) for (const c of G[k].cu) if (c > 0) v.push(c);
+  if (!v.length) return [0, 1];
+  return [Math.min(...v), Math.max(...v)];
+})();

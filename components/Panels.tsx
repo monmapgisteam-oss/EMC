@@ -1,7 +1,8 @@
 "use client";
 
+import { Fragment } from "react";
 import { useStore } from "@/lib/store";
-import { C, COL_NAMES, COL_UNITS, ELEV, BLK2PILE } from "@/lib/config";
+import { C, COL_NAMES, ELEV, BLK2PILE, TRUCK_COLOR } from "@/lib/config";
 import { benchesOf, blocksAt, cuOf, grp, metalSum, moOf, monthlyFlow, sumCol } from "@/lib/excel";
 import { fmt, gradeColor } from "@/lib/format";
 import { MON_L, ROMAN } from "@/lib/i18n";
@@ -11,30 +12,36 @@ import { useEffect, useRef, useState } from "react";
 export function Kpis() {
   const { m, t } = useStore();
   const p = m > 1 ? m - 1 : null;
+  /* Дөрвөн үзүүлэлт нь Excel-ийн ДӨРВӨН баганаас шууд:
+       NOOC   — олборлосон үйлдвэрлэлийн нөөц (захын агуулга 0.25 %)
+       NIIT   — нийт олборлосон хүдэр (БҮ + овоолгууд)
+       HOOSON — хоосон чулуулаг (Овоолго №1, 4, 11)
+       TSUL   — нийт уулын цул */
   const defs = [
-    { k: t.kOre,  v: sumCol(m, C.NIIT), u: t.uKt,  prev: p ? sumCol(p, C.NIIT) : null },
-    { k: t.kBu,   v: sumCol(m, C.BU),   u: t.uKt,  prev: p ? sumCol(p, C.BU) : null },
-    { k: t.kCu,   v: cuOf(m),           u: t.uPct, prev: p ? cuOf(p) : null, dec: 3 },
-    { k: t.kRock, v: sumCol(m, C.TSUL), u: t.uM3,  prev: p ? sumCol(p, C.TSUL) : null },
+    { k: t.kRes,   s: t.kResSub,   ci: C.NOOC,   u: t.uKt, dec: 1 },
+    { k: t.kOre,   s: t.kOreSub,   ci: C.NIIT,   u: t.uKt, dec: 0 },
+    { k: t.kWaste, s: t.kWasteSub, ci: C.HOOSON, u: t.uM3, dec: 1 },
+    { k: t.kRock,  s: t.kRockSub,  ci: C.TSUL,   u: t.uM3, dec: 0 },
   ];
   return (
     <div className="kpis">
       {defs.map((o) => {
-        const pc = o.prev ? ((o.v - o.prev) / o.prev) * 100 : null;
+        const v = sumCol(m, o.ci);
+        const prev = p ? sumCol(p, o.ci) : null;
+        const pc = prev ? ((v - prev) / prev) * 100 : null;
         return (
           <div className="kpi" key={o.k}>
             <div className="k">{o.k}</div>
             <div className="v">
-              <b>{o.dec ? o.v.toFixed(o.dec) : fmt(o.v, 0)}</b>
+              <b>{fmt(v, o.dec)}</b>
               <i>{o.u}</i>
+              {pc !== null && (
+                <em className={pc >= 0 ? "up" : "dn"}>
+                  {(pc >= 0 ? "▲ " : "▼ ") + Math.abs(pc).toFixed(1) + "%"}
+                </em>
+              )}
             </div>
-            {pc === null ? (
-              <div className="d na">{t.noPrev}</div>
-            ) : (
-              <div className={"d " + (pc >= 0 ? "up" : "dn")}>
-                {(pc >= 0 ? "▲ " : "▼ ") + Math.abs(pc).toFixed(1) + "%"}
-              </div>
-            )}
+            <div className="ks">{o.s}</div>
           </div>
         );
       })}
@@ -45,16 +52,19 @@ export function Kpis() {
 /* ------------------------------------------------------- түвшний рейл */
 export function BenchRail() {
   const { m, t, lang, sel, setSel, setBlk, setTip } = useStore();
-  /* Зөвхөн тухайн сард ХӨДӨЛГӨӨНТЭЙ түвшин. Өмнө нь бүх 20 хаялбарыг
-     жагсааж, мэдээлэлгүй нь «—» болж хоосон зай эзэлж байсан. */
-  const act = benchesOf(m);
-  const mx = Math.max(...act.map((e) => sumCol(m, C.NIIT, e)), 1);
+  /* БҮХ хаялбарыг харуулна — мэдээлэлгүй нь бүдэг шошготой. Ингэснээр
+     питийн бүтэн гүнийг хардаг ба тухайн сард аль түвшинд ажилласан нь
+     ялгарна. Багана нь баруун талын тэнхлэгээс ЗҮҮН тийш ургана. */
+  const tot = ELEV.reduce((a2, e) => a2 + sumCol(m, C.NIIT, e), 0) || 1;
+  const mx = Math.max(...ELEV.map((e) => sumCol(m, C.NIIT, e)), 1);
 
   return (
     <div className="rail">
-      {act.map((e) => {
+      {ELEV.map((e) => {
         const kt = sumCol(m, C.NIIT, e);
         const cu = cuOf(m, e);
+        const w = (kt / mx) * 100;
+        if (!kt) return <div className="bench off" key={e}><span className="bl">{e}</span></div>;
         return (
           <button
             key={e}
@@ -64,29 +74,100 @@ export function BenchRail() {
             onMouseEnter={(ev) =>
               setTip({
                 x: ev.clientX, y: ev.clientY,
-                title: `${e} м · ${t.dBench}`, key: `${m} | ${e}`,
+                title: `${t.dBench} ${e} м`, key: `${m} | ${e}`,
                 rows: [
-                  { label: COL_NAMES[lang][C.NIIT], value: `${fmt(kt, 1)} ${t.uKt}`, color: gradeColor(cu) },
-                  { label: "Cu", value: `${cu.toFixed(3)} %` },
-                  { label: "Mo", value: `${moOf(m, e).toFixed(4)} %` },
-                  { label: COL_NAMES[lang][C.TSUL], value: `${fmt(sumCol(m, C.TSUL, e), 0)} ${t.uM3}` },
+                  { label: COL_NAMES[lang][C.NIIT], value: `${fmt(kt, 0)} ${t.uKt}`, color: gradeColor(cu) },
+                  { label: t.tCu, value: `${cu.toFixed(3)} %` },
+                  { label: t.tMo, value: `${moOf(m, e).toFixed(4)} %` },
+                  { label: t.tShare, value: `${((kt / tot) * 100).toFixed(1)} %` },
                 ],
               })
             }
             onMouseMove={(ev) => setTip((prev) => (prev ? { ...prev, x: ev.clientX, y: ev.clientY } : prev))}
             onMouseLeave={() => setTip(null)}
           >
-            <span className="bl">{e}</span>
-            <span className="bbar">
-              {/* Өнгийг `--c` хувьсагчаар дамжуулна: дүүргэлт нь тунгалаг,
-                  тойрог нь мөн өнгөөрөө — CSS дээр нэг дор шийдэгдэнэ. */}
-              <i style={{ width: `${((kt / mx) * 100).toFixed(1)}%`,
-                          ["--c" as any]: gradeColor(cu) }} />
+            <span className="bwrap">
+              <i style={{ width: `${w.toFixed(1)}%`, ["--c" as any]: gradeColor(cu) }}>
+                {w > 26 && <b>{fmt(kt, 0)}</b>}
+              </i>
             </span>
-            <span className="bv">{fmt(kt, 0)}</span>
+            <span className="bl">{e}</span>
           </button>
         );
       })}
+    </div>
+  );
+}
+
+/* ==========================================================================
+   Түвшин бүрийн олборлолт ба уулын цул — шугаман чарт.
+   --------------------------------------------------------------------------
+   ЖИЧ: гурван цуврал НЭГ тэнхлэг дээр байгаа ч НЭГЖ нь ижил биш —
+   «Олборлосон нөөц», «Нийт хүдэр» нь мян.тн, «Уулын цул» нь мян.м³.
+   Тиймээс тэдгээрийг ХЭМЖЭЭГЭЭР нь бус, ХЭЛБЭРЭЭР нь (аль түвшинд их,
+   аль түвшинд бага) харьцуулж унших ёстой. Нэгжийг тайлбарт бичив.
+   ========================================================================== */
+const BSERIES: { ci: number; c: string; nm: [string, string]; u: "kt" | "m3" }[] = [
+  { ci: C.NOOC, c: "var(--s3)", nm: ["Олборлосон нөөц", "Mined reserve"], u: "kt" },
+  { ci: C.NIIT, c: "var(--s1)", nm: ["Нийт хүдэр", "Total ore"], u: "kt" },
+  { ci: C.TSUL, c: "var(--s2)", nm: ["Уулын цул", "Total rock"], u: "m3" },
+];
+
+export function BenchLine() {
+  const { m, t, lang, setTip } = useStore();
+  const li = lang === "mn" ? 0 : 1;
+  const act = ELEV.filter((e) => BSERIES.some((s2) => sumCol(m, s2.ci, e)));
+  const W = 320, H = 104, PL = 30, PR = 6, PT = 8, PB = 14;
+  if (act.length < 2) return <div className="empty">{t.noData}</div>;
+
+  const vals = BSERIES.map((s2) => act.map((e) => sumCol(m, s2.ci, e)));
+  const mx = Math.max(...vals.flat(), 1);
+  const step = Math.pow(10, Math.floor(Math.log10(mx))) / 2;
+  const top = Math.ceil(mx / step) * step;
+  const x = (i: number) => PL + (i / (act.length - 1)) * (W - PL - PR);
+  const y = (v: number) => PT + (1 - v / top) * (H - PT - PB);
+  const ticks = [0, 0.25, 0.5, 0.75, 1].map((f) => f * top);
+
+  return (
+    <div className="lchart">
+      <div className="legend2">
+        {BSERIES.map((s2, k) => (
+          <span key={k}><i style={{ background: s2.c }} />{s2.nm[li]}</span>
+        ))}
+      </div>
+      <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="lsvg">
+        {ticks.map((v, k) => (
+          <g key={k}>
+            <line x1={PL} x2={W - PR} y1={y(v)} y2={y(v)} className="lgrid" />
+            <text x={PL - 4} y={y(v) + 3} className="ltxt" textAnchor="end">{fmt(v, 0)}</text>
+          </g>
+        ))}
+        {BSERIES.map((s2, k) => (
+          <polyline key={k} fill="none" stroke={s2.c} strokeWidth={1.6}
+                    points={act.map((e, i) => `${x(i)},${y(vals[k][i])}`).join(" ")} />
+        ))}
+        {BSERIES.map((s2, k) => act.map((e, i) => (
+          <circle key={`${k}-${e}`} cx={x(i)} cy={y(vals[k][i])} r={2} fill={s2.c} />
+        )))}
+        {act.map((e, i) => (
+          <text key={e} x={x(i)} y={H - 4} className="ltxt" textAnchor="middle">
+            {i % 2 === 0 ? e : ""}
+          </text>
+        ))}
+        {act.map((e, i) => (
+          <rect key={`h${e}`} x={x(i) - 8} y={0} width={16} height={H} fill="transparent"
+                onMouseEnter={(ev) => setTip({
+                  x: ev.clientX, y: ev.clientY, title: `${t.dBench} ${e} м`,
+                  rows: BSERIES.map((s2, k) => ({
+                    label: s2.nm[li],
+                    value: `${fmt(vals[k][i], 0)} ${s2.u === "kt" ? t.uKt : t.uM3}`,
+                    color: s2.c,
+                  })),
+                })}
+                onMouseMove={(ev) => setTip((pv) => (pv ? { ...pv, x: ev.clientX, y: ev.clientY } : pv))}
+                onMouseLeave={() => setTip(null)} />
+        ))}
+      </svg>
     </div>
   );
 }
@@ -131,23 +212,37 @@ export function DetailCard() {
             {!rows.length || !g ? (
               <div className="empty">{t.noData}</div>
             ) : (
+              /* БҮЛЭГЛЭСЭН. Урьд нь 15 багана нэг жагсаалтад орж, толгойд
+                 «мян.тн» гэж бичээд мөр бүрийн ард «кт»/«м³» гэсэн ӨӨР нэгж
+                 давхар наалддаг байсан тул м³-ийн мөрүүд мян.тн-ы багана
+                 дор орж ойлгомжгүй болж байв. Одоо нэгж БҮЛГИЙН гарчигт
+                 нэг л удаа бичигдэнэ. */
               <table>
-                <thead>
-                  <tr><th>{t.thCol}</th><th>{t.thKt}</th><th>{t.thCu}</th><th>{t.thMo}</th></tr>
-                </thead>
                 <tbody>
-                  {rows.map((i) => {
-                    const isPct = i === C.HAY || i === C.BOHP;
+                  {SECTIONS.map((sec, si) => {
+                    const has = sec.cols.filter((i) => rows.includes(i));
+                    if (!has.length) return null;
                     return (
-                      <tr key={i}>
-                        <td>
-                          {COL_NAMES[lang][i]}
-                          {!isPct && <span className="zero"> {COL_UNITS[lang][i]}</span>}
-                        </td>
-                        <td className="mono">{fmt(g.kt[i], isPct ? 2 : 1)}</td>
-                        <td className={"mono" + (g.cu[i] ? "" : " zero")}>{g.cu[i] ? g.cu[i].toFixed(3) : "—"}</td>
-                        <td className={"mono" + (g.mo[i] ? "" : " zero")}>{g.mo[i] ? g.mo[i].toFixed(4) : "—"}</td>
-                      </tr>
+                      <Fragment key={si}>
+                        <tr className="dsec">
+                          <th>{t[sec.key]}</th>
+                          <th className="mono">
+                            {sec.unit === "pct" ? t.uPct : sec.unit === "m3" ? t.uM3 : t.uKt}
+                          </th>
+                          <th className="mono">{t.thCu}</th>
+                          <th className="mono">{t.thMo}</th>
+                        </tr>
+                        {has.map((i) => (
+                          <tr key={i}>
+                            <td>{COL_NAMES[lang][i]}</td>
+                            <td className="mono">{fmt(g.kt[i], sec.unit === "pct" ? 2 : 1)}</td>
+                            <td className={"mono" + (g.cu[i] ? "" : " zero")}>
+                              {g.cu[i] ? g.cu[i].toFixed(3) : "—"}</td>
+                            <td className={"mono" + (g.mo[i] ? "" : " zero")}>
+                              {g.mo[i] ? g.mo[i].toFixed(4) : "—"}</td>
+                          </tr>
+                        ))}
+                      </Fragment>
                     );
                   })}
                 </tbody>
@@ -206,6 +301,72 @@ export function DetailCard() {
    Өмнө нь доод талд 880 px өргөн SVG байсан. Зүүн баганад (252 px) багтахын
    тулд сар бүрийг ХЭВТЭЭ мөр болгосон — дээрх түвшний рейлтэй ижил хэмнэл:
    шошго · багана · тоо. Уншихад ч, харьцуулахад ч илүү тод. */
+/** Дэлгэрэнгүй картын бүлгүүд — нэгж нь бүлэг тутамд НЭГ удаа бичигдэнэ */
+const SECTIONS: { key: "secOre" | "secDil" | "secDest" | "secWaste" | "secRock";
+                  unit: "kt" | "pct" | "m3"; cols: number[] }[] = [
+  { key: "secOre",   unit: "kt",  cols: [C.NOOC, C.BU_U, C.AGU] },
+  { key: "secDil",   unit: "kt",  cols: [C.BOH] },
+  { key: "secDil",   unit: "pct", cols: [C.HAY, C.BOHP] },
+  { key: "secDest",  unit: "kt",  cols: [C.BU, C.OV12, C.OV14, C.OV8A, C.NIIT] },
+  { key: "secWaste", unit: "kt",  cols: [C.OV9A, C.OV9B] },
+  { key: "secWaste", unit: "m3",  cols: [C.HOOSON] },
+  { key: "secRock",  unit: "m3",  cols: [C.TSUL] },
+];
+
+/* ==========================================================================
+   Чиглэл тус бүрийн хуваарилалт — сонгосон сард уулын цул ХААШАА, ХЭДИЙ
+   хэмжээгээр явсныг задална. I–VI сарын чарт нь гурван бүлгийн ДҮНГ
+   харуулдаг бол энэ нь хүлээн авагч бүрээр задална.
+   Өнгө нь газрын зураг дээрх машины өнгөтэй ИЖИЛ (TRUCK_COLOR).
+   ========================================================================== */
+const DEST_ROWS: { ci: number; nm: [string, string]; c: string }[] = [
+  { ci: C.BU,     nm: ["Баяжуулах үйлдвэр", "Concentrator"],    c: TRUCK_COLOR.bu },
+  { ci: C.OV12,   nm: ["Овоолго 12", "Stockpile 12"],           c: TRUCK_COLOR.ore },
+  { ci: C.OV14,   nm: ["Овоолго 14", "Stockpile 14"],           c: TRUCK_COLOR.ore },
+  { ci: C.OV8A,   nm: ["Овоолго 8а", "Stockpile 8a"],           c: TRUCK_COLOR.ore },
+  { ci: C.OV9A,   nm: ["Овоолго 9а · 8 · 9", "Piles 9a, 8, 9"], c: TRUCK_COLOR.waste },
+  { ci: C.OV9B,   nm: ["Овоолго 9б", "Pile 9b"],                c: TRUCK_COLOR.waste },
+  { ci: C.HOOSON, nm: ["Овоолго №1, 4, 11", "Piles 1, 4, 11"],  c: TRUCK_COLOR.waste },
+];
+
+export function DestChart() {
+  const { m, t, lang, setTip } = useStore();
+  const li = lang === "mn" ? 0 : 1;
+  const rows = DEST_ROWS.map((d) => ({ ...d, v: sumCol(m, d.ci) }));
+  const tot = rows.reduce((a, r) => a + r.v, 0) || 1;
+  const mx = Math.max(...rows.map((r) => r.v), 1);
+
+  return (
+    <div className="dchart">
+      {rows.map((r) => (
+        <div className="drow2" key={r.ci}
+             onMouseEnter={(ev) => setTip({
+               x: ev.clientX, y: ev.clientY, title: r.nm[li],
+               rows: [
+                 { label: t.thTot, value: `${fmt(r.v, 0)} ${t.uKt}`, color: r.c },
+                 { label: t.uPct, value: `${((r.v / tot) * 100).toFixed(1)} %` },
+               ],
+             })}
+             onMouseMove={(ev) => setTip((p) => (p ? { ...p, x: ev.clientX, y: ev.clientY } : p))}
+             onMouseLeave={() => setTip(null)}>
+          <span className="dlab2">{r.nm[li]}</span>
+          <span className="dbar">
+            <i style={{ width: `${(r.v / mx) * 100}%`, ["--c" as any]: r.c }} />
+          </span>
+          <span className="dval">{r.v ? fmt(r.v, 0) : "—"}</span>
+          <span className="dpct">{r.v ? `${((r.v / tot) * 100).toFixed(0)} %` : ""}</span>
+        </div>
+      ))}
+      <div className="drow2 tot">
+        <span className="dlab2">{t.thTot}</span>
+        <span />
+        <span className="dval">{fmt(tot, 0)}</span>
+        <span className="dpct">{t.uKt}</span>
+      </div>
+    </div>
+  );
+}
+
 export function Timeline() {
   const { m, setM, t, lang, setTip } = useStore();
   const cols = ["var(--s1)", "var(--s2)", "var(--s3)"];
@@ -310,36 +471,73 @@ export function Timeline() {
    өөрийн масштабтай, зэрэгцээ хоёр багана болгон зурав. Утга бүр нь
    тоогоороо бичигдсэн тул харьцуулалт эндүүрэхгүй.
    ========================================================================== */
-function DualBars({
-  rows, aLabel, bLabel, aDec, bDec, aColor, bColor,
+/* ==========================================================================
+   Хоёр үзүүлэлтийг САРААР харуулах ТАЛБАЙН чарт.
+   --------------------------------------------------------------------------
+   Хос хэвтээ багана байсныг сольсон: сар хоорондын өөрчлөлт баганаар
+   харьцуулагдахгүй байв.
+
+   Хоёр цувралыг НЭГ тэнхлэгт тавихгүй — Cu 0.41 %, Mo 0.014 % шиг хэмжээ
+   нь 30 дахин зөрөх тул нэг нь шугам болж хавтгайрна. Тус бүр нь ӨӨРИЙН
+   гэсэн жижиг чартатай.
+
+   Тэнхлэг нь 0-ээс биш, цувралын доод утгаас эхэлнэ (Cu 0.410–0.422 гэх
+   мэт бага хэлбэлзлийг 0-ээс зурвал шулуун шугам болно). Тасалсныг
+   мэдэгдэхийн тулд дээд, доод утгыг ЗААВАЛ бичнэ. */
+function AreaPair({
+  rows, aLabel, bLabel, aDec, bDec, aColor, bColor, aUnit, bUnit,
 }: {
   rows: { key: string; a: number; b: number }[];
   aLabel: string; bLabel: string;
   aDec: number; bDec: number;
   aColor: string; bColor: string;
+  aUnit: string; bUnit: string;
 }) {
-  const aMax = Math.max(...rows.map((r) => r.a), 1e-9);
-  const bMax = Math.max(...rows.map((r) => r.b), 1e-9);
-  return (
-    <div className="dchart">
-      <div className="dhead">
-        <span className="dsp" />
-        <span style={{ color: aColor }}>{aLabel}</span>
-        <span style={{ color: bColor }}>{bLabel}</span>
+  const { setTip, lang } = useStore();
+  const one = (pick: "a" | "b", label: string, color: string, dec: number, unit: string) => {
+    const v = rows.map((r) => r[pick]);
+    const lo = Math.min(...v), hi = Math.max(...v);
+    const pad = (hi - lo) * 0.18 || Math.abs(hi) * 0.08 || 1;
+    const y0 = lo - pad, y1 = hi + pad;
+    const W = 150, H = 54, PB = 10, PT = 8;
+    const x = (i: number) => (i / (rows.length - 1)) * W;
+    const y = (t2: number) => PT + (1 - (t2 - y0) / (y1 - y0)) * (H - PT - PB);
+    const line = rows.map((r, i) => `${x(i)},${y(v[i])}`).join(" ");
+    const area = `0,${H - PB} ${line} ${W},${H - PB}`;
+    return (
+      <div className="acell">
+        <div className="ahead" style={{ color }}>{label}</div>
+        <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="asvg">
+          <polygon points={area} fill={color} opacity={0.18} />
+          <polyline points={line} fill="none" stroke={color} strokeWidth={1.6} />
+          {rows.map((r, i) => <circle key={r.key} cx={x(i)} cy={y(v[i])} r={1.8} fill={color} />)}
+          {rows.map((r, i) => (
+            <rect key={"h" + r.key} x={x(i) - W / (rows.length * 2)} y={0}
+                  width={W / rows.length} height={H} fill="transparent"
+                  onMouseEnter={(ev) => setTip({
+                    x: ev.clientX, y: ev.clientY,
+                    title: MON_L[lang][i],
+                    rows: [{ label, value: `${v[i].toFixed(dec)} ${unit}`, color }],
+                  })}
+                  onMouseMove={(ev) => setTip((pv) => (pv ? { ...pv, x: ev.clientX, y: ev.clientY } : pv))}
+                  onMouseLeave={() => setTip(null)} />
+          ))}
+        </svg>
+        {/* Тасалсан тэнхлэгийг мэдэгдэхийн тулд доод/дээд утгыг бичнэ */}
+        <div className="arange"><span>{lo.toFixed(dec)}</span><span>{hi.toFixed(dec)}</span></div>
+        {/* Сарын шошго нь чарт ТУС БҮРИЙН дотор. Хоёрын доор нэг мөр
+            байрлуулбал I–III нь зүүн чартын, IV–VI нь баруунгийн доор
+            орж, буруу уншигдана. */}
+        <div className="axlab">{rows.map((r) => <span key={r.key}>{r.key}</span>)}</div>
       </div>
-      {rows.map((r) => (
-        <div className="drow" key={r.key}>
-          <span className="dlab">{r.key}</span>
-          <span className="dcell">
-            <span className="dbar"><i style={{ width: `${(r.a / aMax) * 100}%`, ["--c" as any]: aColor }} /></span>
-            <span className="dval">{r.a ? r.a.toFixed(aDec) : "—"}</span>
-          </span>
-          <span className="dcell">
-            <span className="dbar"><i style={{ width: `${(r.b / bMax) * 100}%`, ["--c" as any]: bColor }} /></span>
-            <span className="dval">{r.b ? r.b.toFixed(bDec) : "—"}</span>
-          </span>
-        </div>
-      ))}
+    );
+  };
+  return (
+    <div className="achart">
+      <div className="acells">
+        {one("a", aLabel, aColor, aDec, aUnit)}
+        {one("b", bLabel, bColor, bDec, bUnit)}
+      </div>
     </div>
   );
 }
@@ -349,7 +547,7 @@ export function GradeChart() {
   const rows = [1, 2, 3, 4, 5, 6].map((mm) => ({
     key: ROMAN[mm - 1], a: cuOf(mm), b: moOf(mm),
   }));
-  return <DualBars rows={rows} aLabel="Cu %" bLabel="Mo %"
+  return <AreaPair rows={rows} aLabel="Cu %" bLabel="Mo %" aUnit="%" bUnit="%"
                    aDec={3} bDec={4} aColor="var(--g5)" bColor="var(--s3)" />;
 }
 
@@ -360,7 +558,7 @@ export function MetalChart() {
     a: metalSum(mm, "cut", C.NIIT),
     b: metalSum(mm, "mot", C.NIIT),
   }));
-  return <DualBars rows={rows} aLabel="Cu т" bLabel="Mo т"
+  return <AreaPair rows={rows} aLabel="Cu т" bLabel="Mo т" aUnit="т" bUnit="т"
                    aDec={0} bDec={0} aColor="var(--g5)" bColor="var(--s3)" />;
 }
 

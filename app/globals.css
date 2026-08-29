@@ -26,29 +26,29 @@
 @media (prefers-color-scheme: dark){
   :root:not([data-theme="light"]){
     color-scheme: dark;
-    --ground:#101415; --surface:#1b1f20; --surface-2:#232827; --sunken:#161a1b;
-    --ink:#edf2f0; --ink-2:#a7b1af; --ink-3:#7b8583;
-    --line:#2f3635; --line-soft:#262c2b;
+    --ground:#0b1117; --surface:#121a23; --surface-2:#18222d; --sunken:#0e1620;
+    --ink:#f1f5f9; --ink-2:#a8b6c4; --ink-3:#74889a;
+    --line:#32424f; --line-soft:#263441;
     --accent:#e09a5e; --accent-soft:#3a2a1c; --accent-ink:#f0b482; --on-accent:#17120e;
-    --ui:#2fe0c4; --ui-soft:#123a34; --ui-ink:#6ff0da; --on-ui:#08211d;
+    --ui:#2fe0c4; --ui-soft:#0f3a38; --ui-ink:#6ff0da; --on-ui:#08211d;
     --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#7d8886;
     --water:#4b93a2;
     --good:#4fae6d; --bad:#e07068;
-    --g1:#3a2b1e; --g2:#54402c; --g3:#71553a; --g4:#8f6c48; --g5:#ae8659; --g6:#cda06c;
+    --g1:#6b4d2c; --g2:#86603c; --g3:#a2774c; --g4:#bd8f5f; --g5:#d8a874; --g6:#f0c493;
     --shadow:0 1px 2px rgba(0,0,0,.45), 0 10px 34px -16px rgba(0,0,0,.8);
   }
 }
 :root[data-theme="dark"]{
   color-scheme: dark;
-  --ground:#101415; --surface:#1b1f20; --surface-2:#232827; --sunken:#161a1b;
-  --ink:#edf2f0; --ink-2:#a7b1af; --ink-3:#7b8583;
-  --line:#2f3635; --line-soft:#262c2b;
+  --ground:#0b1117; --surface:#121a23; --surface-2:#18222d; --sunken:#0e1620;
+  --ink:#f1f5f9; --ink-2:#a8b6c4; --ink-3:#74889a;
+  --line:#32424f; --line-soft:#263441;
   --accent:#e09a5e; --accent-soft:#3a2a1c; --accent-ink:#f0b482; --on-accent:#17120e;
-  --ui:#2fe0c4; --ui-soft:#123a34; --ui-ink:#6ff0da; --on-ui:#08211d;
+  --ui:#2fe0c4; --ui-soft:#0f3a38; --ui-ink:#6ff0da; --on-ui:#08211d;
   --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#7d8886;
   --water:#4b93a2;
   --good:#4fae6d; --bad:#e07068;
-  --g1:#3a2b1e; --g2:#54402c; --g3:#71553a; --g4:#8f6c48; --g5:#ae8659; --g6:#cda06c;
+  --g1:#6b4d2c; --g2:#86603c; --g3:#a2774c; --g4:#bd8f5f; --g5:#d8a874; --g6:#f0c493;
   --shadow:0 1px 2px rgba(0,0,0,.45), 0 10px 34px -16px rgba(0,0,0,.8);
 }
 
@@ -58,6 +58,26 @@ body{margin:0;overflow:hidden;background:var(--ground);color:var(--ink);
   font-family:"Golos Text",-apple-system,"Segoe UI",Roboto,sans-serif;
   font-size:13px;line-height:1.45;-webkit-font-smoothing:antialiased}
 .mono{font-family:"IBM Plex Mono",ui-monospace,Consolas,monospace;font-variant-numeric:tabular-nums}
+
+/* ---------------- гүйлгэх зурвас ----------------
+   Картуудын доторх гүйлгэх зурвас (.rail, .dtable, .dbody) браузерын
+   анхдагч өргөн саарал хэлбэрээрээ гарч, нарийхан панелуудад бүдүүн
+   зурвас мэт дүүрч байв. Нарийн, дэвсгэргүй, зөвхөн хөдөлгүүр нь
+   харагдана. Firefox нь `scrollbar-*`, WebKit нь `::-webkit-*` дэмждэг
+   тул хоёуланг нь бичив. */
+.rail,.dtable,.dbody,.lbody{scrollbar-width:thin;scrollbar-color:var(--line) transparent}
+.rail::-webkit-scrollbar,
+.dtable::-webkit-scrollbar,
+.dbody::-webkit-scrollbar{width:6px;height:6px}
+.rail::-webkit-scrollbar-track,
+.dtable::-webkit-scrollbar-track,
+.dbody::-webkit-scrollbar-track{background:transparent}
+.rail::-webkit-scrollbar-thumb,
+.dtable::-webkit-scrollbar-thumb,
+.dbody::-webkit-scrollbar-thumb{background:var(--line);border-radius:99px}
+.rail:hover::-webkit-scrollbar-thumb,
+.dtable:hover::-webkit-scrollbar-thumb,
+.dbody:hover::-webkit-scrollbar-thumb{background:var(--ink-3)}
 h1,h2,h3{margin:0;font-weight:600;letter-spacing:-.01em}
 button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
 input{font:inherit}
@@ -68,11 +88,16 @@ input{font:inherit}
 /* ---------------- header ---------------- */
 .head{display:flex;align-items:center;gap:12px;padding:8px 14px;border-bottom:1px solid var(--line);
   background:var(--surface);flex-wrap:wrap}
-.brand{display:flex;align-items:center;gap:9px}
-.mark{width:27px;height:27px;border-radius:6px;flex:none;background:linear-gradient(160deg,#b0713f,#7a4119);
-  display:grid;place-items:center;color:#fff;font:600 10.5px/1 "IBM Plex Mono",monospace}
-.brand b{font-size:13.5px;font-weight:600;letter-spacing:-.015em;display:block}
-.brand span{font-size:9.5px;color:var(--ink-3);letter-spacing:.07em;text-transform:uppercase}
+.brand{display:flex;align-items:center;gap:11px}
+/* Байгууллагын лого. SVG нь бараан дүрстэй тул харанхуй горимд
+   гэрэлтүүлж, цайвар горимд хэвээр үлдээнэ. */
+.logo{height:34px;width:auto;flex:none;display:block}
+:root[data-theme="dark"] .logo{filter:brightness(0) invert(1) opacity(.92)}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]) .logo{filter:brightness(0) invert(1) opacity(.92)}
+}
+.brand b{font-size:13px;font-weight:700;letter-spacing:.06em;display:block;
+  text-transform:uppercase;color:var(--ink)}
 .hspacer{flex:1}
 .hlabel{font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);font-weight:600}
 .months{display:flex;gap:3px}
@@ -81,6 +106,9 @@ input{font:inherit}
 .months button:hover{border-color:var(--line);color:var(--ink)}
 .months button[aria-pressed="true"]{background:var(--ui);color:var(--on-ui);border-color:var(--ui)}
 .seg{display:flex;background:var(--sunken);border-radius:7px;padding:2px;border:1px solid var(--line-soft)}
+/* Өнгөний горимын шилжүүлэгч — тэмдэгт нь ☀ ◐ ☾ тул тэгш дөрвөлжин */
+.seg[aria-label="Өнгөний горим"] button,
+.seg[aria-label="Colour mode"] button{min-width:28px;padding:3px 0;font-size:12px;line-height:1.2}
 .seg button{padding:4px 9px;border-radius:5px;font-size:10.5px;font-weight:600;color:var(--ink-3);letter-spacing:.03em}
 .seg button[aria-pressed="true"]{background:var(--surface-2);color:var(--ink)}
 .ghost{padding:5px 10px;border:1px solid var(--line);border-radius:7px;font-size:11.5px;color:var(--ink-2);font-weight:500}
@@ -89,7 +117,16 @@ input{font:inherit}
 .ghost[aria-pressed="true"]{background:var(--ui-soft);border-color:var(--ui-soft);color:var(--ui-ink)}
 
 /* ---------------- main grid ---------------- */
-.main{display:grid;grid-template-columns:252px minmax(0,1fr) 376px;gap:10px;padding:10px 12px;min-height:0}
+/* Баганын өргөнийг Shell.tsx-ээс инлайнаар оноодог (чирж өөрчилнө);
+   энд зөвхөн нөөц утга. */
+.main{display:grid;grid-template-columns:350px 6px minmax(0,1fr) 6px 376px;
+  gap:6px;padding:10px 12px;min-height:0}
+
+/* Багана хооронд чирэх бариул */
+.split{cursor:col-resize;border-radius:3px;background:transparent;transition:background .12s}
+.split:hover,body.dragging .split{background:var(--line)}
+body.dragging{cursor:col-resize;user-select:none}
+body.dragging *{pointer-events:none}
 .col{display:flex;flex-direction:column;gap:10px;min-height:0;min-width:0}
 .panel{background:var(--surface);border:1px solid var(--line-soft);border-radius:var(--r);
   display:flex;flex-direction:column;min-height:0;min-width:0;overflow:hidden}
@@ -102,27 +139,68 @@ input{font:inherit}
 .pb.tight{padding:6px 7px 7px}
 
 /* ---------------- KPI ---------------- */
-.kpis{display:grid;grid-template-columns:1fr 1fr;gap:7px;flex:none}
+/* Дөрвөн үзүүлэлт газрын зургийн ДЭЭР, нэг мөрөнд */
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;flex:none}
 .kpi{background:var(--surface);border:1px solid var(--line-soft);border-radius:var(--r);padding:8px 9px 7px;min-width:0}
-.kpi .k{font-size:9px;color:var(--ink-3);font-weight:600;letter-spacing:.04em;text-transform:uppercase;
-  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.kpi .v{display:flex;align-items:baseline;gap:3px;margin-top:1px}
-.kpi .v b{font:500 18px/1.1 "IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+/* Гарчиг БҮТНЭЭРЭЭ гарна. Өмнө нь `nowrap + ellipsis` байсан тул нарийн
+   баганад «НИЙТ ОЛБОРЛОСО…», «БАЯЖУУЛАХ ҮЙЛД…» гэж таслагдаж байв.
+   Хоёр мөр болтол өргөсөж, бүх карт ижил өндөртэй үлдэхийн тулд
+   min-height-ээр хоёр мөрийн зайг тогтоов. */
+.kpi .k{font-size:9.5px;line-height:1.35;color:var(--ink-3);font-weight:600;
+  letter-spacing:.03em;text-transform:uppercase;overflow-wrap:anywhere}
+.kpi .v{display:flex;align-items:baseline;gap:4px;margin-top:3px}
+.kpi .v b{font:500 21px/1.05 "IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
 .kpi .v i{font-style:normal;font-size:9px;color:var(--ink-3)}
-.kpi .d{font:600 9.5px/1.5 "IBM Plex Mono",monospace}
-.kpi .d.up{color:var(--good)} .kpi .d.dn{color:var(--bad)} .kpi .d.na{color:var(--ink-3);font-weight:400}
+.kpi .v em{font:600 9.5px/1.5 "IBM Plex Mono",monospace;font-style:normal;margin-left:auto}
+.kpi .v em.up{color:var(--good)} .kpi .v em.dn{color:var(--bad)}
+/* Дэд тайлбар — тухайн тоо ЯГ юуг хэлж байгааг заана */
+.kpi .ks{font-size:9.5px;color:var(--ui-ink);margin-top:3px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
 /* ---------------- bench rail ---------------- */
 .rail{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:1px}
-.bench{display:flex;align-items:center;gap:6px;padding:3px 6px;border-radius:5px;width:100%;flex:none;text-align:left}
-.bench:hover:not(:disabled){background:var(--sunken)}
+
+/* Түвшин тус бүрийн олборлолт — багана нь БАРУУН талын тэнхлэгээс
+   ЗҮҮН тийш ургана, хаялбарын өндөр нь баруун талд бичигдэнэ. */
+.bench{display:grid;grid-template-columns:1fr 34px;gap:8px;align-items:center;
+  padding:2px 4px;border-radius:4px;width:100%;text-align:left;transition:background .12s}
+.bench:hover{background:var(--sunken)}
 .bench[aria-pressed="true"]{background:var(--ui-soft)}
 .bench[aria-pressed="true"] .bl{color:var(--ui-ink);font-weight:600}
-.bench.off{opacity:.42;cursor:default}
-.bl{font:400 10.5px/1.5 "IBM Plex Mono",monospace;color:var(--ink-2);width:30px;flex:none}
-.bbar{flex:1;height:7px;border-radius:4px;background:var(--sunken);overflow:hidden;min-width:6px}
-.bbar i{display:block;height:100%;border-radius:3px}
-.bv{font:400 9.5px/1.5 "IBM Plex Mono",monospace;color:var(--ink-3);width:44px;text-align:right;flex:none}
+.bench.off{opacity:.32;cursor:default;min-height:15px}
+.bwrap{display:flex;justify-content:flex-end;height:15px;
+  border-right:1px solid var(--line);padding-right:1px}
+.bwrap i{display:block;height:100%;min-width:2px;box-sizing:border-box;
+  border-radius:3px 0 0 3px;position:relative;
+  background:color-mix(in srgb, var(--c) 42%, transparent);
+  border:1px solid var(--c);border-right:none}
+.bwrap i b{position:absolute;right:5px;top:0;line-height:13px;
+  font:500 9px/13px "IBM Plex Mono",monospace;color:var(--ink);font-weight:600}
+.bl{font:400 10px/1.5 "IBM Plex Mono",monospace;color:var(--ink-2);text-align:left}
+
+/* Cu-гийн өнгөний богино шатлал — панелийн толгойд */
+.curamp{display:inline-flex;gap:1px;margin-left:auto}
+.curamp i{width:9px;height:7px;border-radius:1px}
+
+/* Түвшин бүрийн олборлолт ба уулын цул — шугаман чарт */
+.lchart{display:flex;flex-direction:column;gap:5px}
+.legend2{display:flex;gap:10px;flex-wrap:wrap;font-size:9.5px;color:var(--ink-3)}
+.legend2 span{display:inline-flex;align-items:center;gap:4px}
+.legend2 i{width:7px;height:7px;border-radius:50%}
+.lsvg{width:100%;height:104px;overflow:visible}
+.lgrid{stroke:var(--line-soft);stroke-width:1}
+.ltxt{font:400 7px/1 "IBM Plex Mono",monospace;fill:var(--ink-3)}
+
+/* Талбайн чарт — үзүүлэлт тус бүр ӨӨРИЙН тэнхлэгтэй */
+.achart{display:flex;flex-direction:column;gap:4px}
+.acells{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.acell{display:flex;flex-direction:column;gap:2px;min-width:0}
+.ahead{font:600 8.5px/1.4 "Golos Text",sans-serif;letter-spacing:.06em;text-transform:uppercase}
+.asvg{width:100%;height:54px;overflow:visible}
+.arange{display:flex;justify-content:space-between;
+  font:400 8.5px/1.3 "IBM Plex Mono",monospace;color:var(--ink-3)}
+.axlab{display:flex;justify-content:space-between;padding:0 2px;
+  font:400 9px/1.3 "IBM Plex Mono",monospace;color:var(--ink-3);letter-spacing:.04em}
 
 /* ---------------- map ---------------- */
 .panel.map{display:grid;grid-template-rows:auto minmax(0,1fr)}
@@ -133,15 +211,33 @@ input{font:inherit}
 #viewDiv{position:absolute;inset:0}
 /* Тусгаарлах горим: суурь зураг, гадаргуу унтарсан үед SceneView-ийн ард
    энэ бараан дэвсгэр харагдана — питийн шатлал тод ялгарна. */
-body.isolated #viewDiv{background:#0d1113}
-body.isolated .mapwrap{background:#0d1113}
-body.isolated .gradekey,body.isolated .hintbar{background:rgba(13,17,19,.9);border-color:#2a3134;color:#c8d0cd}
+body.isolated #viewDiv{background:#080d12}
+body.isolated .mapwrap{background:#080d12}
+body.isolated .gradekey{background:rgba(11,17,23,.92);border-color:#263441;color:#a8b6c4}
 
 .esri-view-surface--inset-outline:focus::after{outline:none !important}
-.hintbar{position:absolute;left:10px;top:9px;display:flex;align-items:center;gap:7px;z-index:2;
-  background:var(--surface);border:1px solid var(--line-soft);padding:4px 10px;border-radius:999px;
-  font-size:10.5px;color:var(--ink-3);pointer-events:none}
-.dotp{width:5px;height:5px;border-radius:50%;background:var(--ui);flex:none}
+
+/* ArcGIS-ийн виджет товчнууд (зум, компас, навигаци).
+   Esri-гийн загварын хуудас тэдгээрт ЦАГААН дэвсгэр өгдөг бөгөөд энэ нь
+   хиймэл дагуулын зураг, аппын бараан хэв маягийн аль алинд нь тохирдоггүй.
+   Аппын шилэн панелийн хэв маягт оруулав. */
+.esri-ui .esri-widget,
+.esri-ui .esri-widget--button{
+  background:color-mix(in srgb, var(--surface) 78%, transparent) !important;
+  color:var(--ink-2) !important;
+  border-color:var(--line-soft) !important;
+  backdrop-filter:blur(7px) saturate(1.1);
+  box-shadow:none !important;
+}
+.esri-ui .esri-widget--button:hover,
+.esri-ui .esri-widget--button:focus{
+  background:var(--surface-2) !important; color:var(--ink) !important;
+}
+.esri-ui .esri-zoom .esri-widget--button:first-child{border-radius:7px 7px 0 0}
+.esri-ui .esri-zoom .esri-widget--button:last-child{border-radius:0 0 7px 7px}
+.esri-ui .esri-component{box-shadow:none !important}
+.esri-ui .esri-compass__rotation-container,
+.esri-ui .esri-navigation-toggle__rotation-container{color:inherit}
 
 .layerbox[hidden]{display:none}
 .layerbox{position:absolute;right:10px;top:9px;z-index:3;width:268px;background:var(--surface);
@@ -149,17 +245,22 @@ body.isolated .gradekey,body.isolated .hintbar{background:rgba(13,17,19,.9);bord
   display:flex;flex-direction:column;gap:6px}
 .lbh{font:600 9px/1.5 "Golos Text",sans-serif;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-3)}
 .lbsep{height:1px;background:var(--line-soft);margin:2px 0}
-.lrow{display:flex;align-items:center;gap:8px;padding:3px 4px;border-radius:5px;width:100%;text-align:left}
+/* GRID — flex биш. `.lrow span` дээрх `flex:1` нь нэрийн зэрэгцээ
+   ТУМБЛЕРТ ч хамаарч байсан тул тумблер нэрийн уртаас хамаарч хөвж,
+   мөрүүд эгнээгүй муруй харагдаж байв. Гурван багана ТОГТМОЛ өргөнтэй. */
+.lrow{display:grid;grid-template-columns:10px 1fr 26px;gap:8px;align-items:center;
+  padding:3px 4px;border-radius:5px;width:100%;text-align:left}
 .lrow:hover{background:var(--sunken)}
-.lrow .sw{width:10px;height:10px;border-radius:3px;flex:none;border:1px solid var(--line)}
-.lrow span{flex:1;font-size:11.5px;color:var(--ink-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lrow .sw{width:10px;height:10px;border-radius:3px;border:1px solid var(--line)}
+.lrow > span:nth-child(2){font-size:11.5px;color:var(--ink-2);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 .lrow .tg{width:26px;height:15px;border-radius:999px;background:var(--sunken);border:1px solid var(--line);
-  position:relative;flex:none;transition:.15s}
+  position:relative;transition:.15s}
 .lrow .tg::after{content:"";position:absolute;left:2px;top:1.5px;width:10px;height:10px;border-radius:50%;
   background:var(--ink-3);transition:.15s}
 .lrow[aria-pressed="true"] .tg{background:var(--ui);border-color:var(--ui)}
 .lrow[aria-pressed="true"] .tg::after{left:13px;background:var(--on-ui)}
-.lrow[aria-pressed="true"] span{color:var(--ink)}
+.lrow[aria-pressed="true"] > span:nth-child(2){color:var(--ink)}
 .zoomto{width:22px;height:22px;flex:none;border-radius:5px;border:1px solid transparent;
   color:var(--ink-3);font-size:13px;line-height:1;display:grid;place-items:center}
 .zoomto:hover{background:var(--sunken);border-color:var(--line);color:var(--ui)}
@@ -173,8 +274,10 @@ body.isolated .gradekey,body.isolated .hintbar{background:rgba(13,17,19,.9);bord
   border:1px solid var(--line-soft);border-radius:8px;padding:6px 8px;display:flex;flex-direction:column;gap:4px}
 .gradekey > span{font:600 9px/1.4 "Golos Text",sans-serif;color:var(--ink-3);letter-spacing:.05em}
 .ramp{display:flex;gap:2px}
-.ramp i{width:16px;height:8px;border-radius:2px}
-.rax{display:flex;justify-content:space-between;font:400 8.5px/1 "IBM Plex Mono",monospace;color:var(--ink-3)}
+.ramp i{width:26px;height:8px;border-radius:2px}
+/* Квантилийн завсруудыг ЗААГ дээр нь тавина (16.7 %, 33.3 % ... ) */
+.rax{position:relative;height:11px;font:400 8.5px/1.3 "IBM Plex Mono",monospace;color:var(--ink-3)}
+.rax b{position:absolute;top:0;font-weight:400;transform:translateX(-50%);white-space:nowrap}
 .rlegoff{display:flex;align-items:center;gap:6px;font-size:9.5px;color:var(--ink-3);margin-top:2px}
 .rlegoff i{width:10px;height:8px;border-radius:2px;background:var(--s4);opacity:.5;flex:none}
 
@@ -189,7 +292,7 @@ body.isolated .gradekey,body.isolated .hintbar{background:rgba(13,17,19,.9);bord
 /* Газрын зураг дээр хөвөх самбарууд — Experience Builder-ийн маягаар
    хагас тунгалаг «шил». Бүтэн дүүргэлттэй байсан нь зургийг таслаад
    хүнд харагддаг байсан. */
-.hintbar,.gradekey,.layerbox{
+.gradekey,.layerbox{
   background:color-mix(in srgb, var(--surface) 74%, transparent);
   -webkit-backdrop-filter:blur(10px) saturate(1.1);
   backdrop-filter:blur(10px) saturate(1.1);
@@ -210,6 +313,23 @@ body.isolated .gradekey,body.isolated .hintbar{background:rgba(13,17,19,.9);bord
 .dbar i{display:block;height:100%;border-radius:3px}
 .dval{font:400 9px/1.4 "IBM Plex Mono",monospace;color:var(--ink-3);
   flex:none;min-width:32px;text-align:right}
+
+/* Чиглэл тус бүрийн хуваарилалт */
+.drow2{display:grid;grid-template-columns:1fr 64px 46px 30px;gap:7px;align-items:center;
+  padding:2px;border-radius:4px}
+.drow2:hover{background:var(--sunken)}
+.dlab2{font-size:11px;color:var(--ink-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.drow2 .dval{font-size:10px;color:var(--ink);min-width:0}
+.dpct{font:400 9.5px/1.4 "IBM Plex Mono",monospace;color:var(--ink-3);text-align:right}
+.drow2.tot{margin-top:3px;padding-top:5px;border-top:1px solid var(--line-soft)}
+.drow2.tot .dlab2{color:var(--ink-3)}
+
+/* Дэлгэрэнгүй картын бүлгийн гарчиг */
+.dsec th{position:sticky;top:0;background:var(--surface);
+  font:600 8.5px/1.6 "Golos Text",sans-serif;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--ink-3);text-align:left;padding:7px 4px 3px;border-bottom:1px solid var(--line-soft)}
+.dsec th.mono{text-align:right;font-family:"IBM Plex Mono",monospace;letter-spacing:0;text-transform:none}
+.dsec:first-child th{padding-top:0}
 
 /* ---------------- detail card ---------------- */
 .joinbar{display:flex;align-items:center;gap:5px;flex-wrap:wrap;flex:none;margin-bottom:8px}
@@ -281,7 +401,7 @@ tr.sum td{font-weight:600;border-top:1px solid var(--line);border-bottom:none;co
   flex:none;width:44px;text-align:right}
 .mrow[aria-pressed="true"] .mv{color:var(--ink)}
 /* ---------------- drawer ---------------- */
-.scrim{position:fixed;inset:0;background:rgba(10,14,15,.45);opacity:0;pointer-events:none;
+.scrim{position:fixed;inset:0;background:rgba(5,9,13,.55);opacity:0;pointer-events:none;
   transition:opacity .18s;z-index:40}
 .scrim.on{opacity:1;pointer-events:auto}
 .drawer{position:fixed;top:0;right:0;bottom:0;width:min(600px,94vw);background:var(--surface);

@@ -8,8 +8,11 @@
 import { useEffect, useRef, useState } from "react";
 import Map from "@arcgis/core/Map";
 import Basemap from "@arcgis/core/Basemap";
+import BasemapGallery from "@arcgis/core/widgets/BasemapGallery";
+import Expand from "@arcgis/core/widgets/Expand";
 import SceneView from "@arcgis/core/views/SceneView";
 import SceneLayer from "@arcgis/core/layers/SceneLayer";
+import IntegratedMeshLayer from "@arcgis/core/layers/IntegratedMeshLayer";
 import FeatureLayer from "@arcgis/core/layers/FeatureLayer";
 import TileLayer from "@arcgis/core/layers/TileLayer";
 import ElevationLayer from "@arcgis/core/layers/ElevationLayer";
@@ -22,18 +25,32 @@ import esriConfig from "@arcgis/core/config";
 
 import { useStore } from "@/lib/store";
 import {
-  SVC, C, COL_NAMES, BASEMAPS, ELEV_URL, GROUND_OPACITY, GROUND_NM,
-  BU_TYPE, BLD_COLOR, PILE2COL, pileWhere, type BasemapKey,
+  SVC, C, COL_NAMES, ELEV_URL, GROUND_OPACITY, GROUND_NM,
+  BU_TYPE, BLD_COLOR, PILE_COLOR, PILE_HEX, PILE_EDGE, PILE_EDGE_HEX,
+  PILE2COL, TRUCK_COLOR, pileWhere,
 } from "@/lib/config";
-import { cuOf, metalSum, moOf, sumCol } from "@/lib/excel";
+import { cuOf, metalSum, moOf, sumCol, GRADE_BREAKS, GRADE_RANGE } from "@/lib/excel";
 import {
-  loadDests, damCenter, tailingsPath, FlowSim,
-  type Dest,
+  loadDests, loadParked, loadTailLine, FlowSim,
+  type Dest, type Truck,
 } from "@/lib/flow";
 import { fmt, hex, num1 } from "@/lib/format";
 
 /** @arcgis/core-ийн assets-ыг node_modules-оос хуулахгүйгээр CDN-ээс авна */
 esriConfig.assetsPath = "https://js.arcgis.com/4.34/@arcgis/core/assets";
+
+/** Хаягдлын хоолой */
+/* Гүн ба диаметрийг бодит хэмжээнээс ТОМРУУЛСАН: 4.4 км урт коридорыг
+   бүтнээр нь харах зумд (≈2.5 м/пиксел) 6 м-ийн хоолой 2 пиксел болж,
+   хагас тунгалаг гадаргуугаар огт уншигдахгүй байв. */
+const TAIL_DEPTH = 12;     // гүн, м (гадаргуугаас доош)
+const PIPE_D = 14;         // хоолойн диаметр, м
+/* ҮҮРЛЭСЭН байх ёстой: долгион < цөм < бүрхүүл. Урьд нь долгион (10.5)
+   цөмөөс (8.5) ТОМ байсан тул хоолойн гадуур цухуйж, ирмэг нь тасархай
+   ширүүн харагдаж байв. */
+const FLOW_D = 8.5;        // тасралтгүй усны цөмийн диаметр, м
+const WAVE_D = 5.5;        // хөдөлж буй долгионы диаметр, м (цөмөөс НАРИЙН)
+const FLOW_SEG = 150;      // нэг долгионы урт, м
 
 interface MeshInfo { url: string; lon: number; lat: number; z: number }
 
@@ -90,16 +107,17 @@ export default function MineScene() {
   const [isolated, setIsolated] = useState(false);
   const [layersOpen, setLayersOpen] = useState(false);
   const [groundStep, setGroundStep] = useState(0);
-  const [basemapKey, setBasemapKey] = useState<BasemapKey>("imagery");
   const [pitUrl, setPitUrl] = useState("");
   const [pitMsg, setPitMsg] = useState<{ text: string; cls: string }>({ text: "", cls: "" });
   const [visible, setVisible] = useState<Record<string, boolean>>({});
   const flowTimer = useRef<number | null>(null);
   const simRef = useRef<FlowSim | null>(null);
   const destsRef = useRef<Dest[]>([]);
+  const parkedRef = useRef<Truck[]>([]);
   /* Байнгын Graphic обьектууд — давталт бүрт ДАХИН ҮҮСГЭХГҮЙ (анивчихаас сэргийлнэ) */
   const truckGfx = useRef<Graphic[]>([]);
   const truckKey = useRef<string[]>([]);
+  const prevBasemap = useRef<Basemap | null>(null);
   const tailGfx = useRef<Graphic[]>([]);
   const tailPath = useRef<{ lon: number; lat: number; z: number }[]>([]);
 
@@ -116,47 +134,45 @@ export default function MineScene() {
 
     function init() {
 
-    const dark =
-      document.documentElement.getAttribute("data-theme") === "dark" ||
-      window.matchMedia?.("(prefers-color-scheme: dark)").matches;
+    /** Одоогийн өнгөний горим. `data-theme` байхгүй бол ҮС-ийн тохиргоо. */
+    const isDark = () => {
+      const a = document.documentElement.getAttribute("data-theme");
+      if (a === "dark") return true;
+      if (a === "light") return false;
+      return !!window.matchMedia?.("(prefers-color-scheme: dark)").matches;
+    };
 
-    const mkBasemap = (k: BasemapKey) =>
-      new Basemap({ baseLayers: [new TileLayer({ url: BASEMAPS[k].url })], title: k });
+    /* Esri-гийн СОНГОДОГ (растер) суурь зургууд — API key шаарддаггүй.
+       Вектор хувилбарууд (…-vector) түлхүүр шаарддаг тул орсонгүй. */
+    const BM_IDS = ["satellite", "hybrid", "topo", "streets", "gray",
+                    "dark-gray", "terrain", "oceans", "osm",
+                    "national-geographic"];
 
     const L = layersRef.current;
 
-    L.roads = new FeatureLayer({
-      url: SVC.roads, title: "roads", outFields: ["badedturl", "azgt", "txt"],
-      popupEnabled: false, elevationInfo: { mode: "on-the-ground" },
-      renderer: {
-        type: "unique-value", field: "badedturl",
-        uniqueValueInfos: [
-          { value: 0, label: "Авто зам", symbol: line(2.4, 0.85) },
-          { value: 2, label: "Бетон зам", symbol: line(1.7, 0.6) },
-          { value: 3, label: "Сайжруулсан шороон", symbol: line(1.5, 0.6, true) },
-          { value: 1, label: "Явган зам", symbol: line(1.0, 0.6, true) },
-        ],
-        defaultSymbol: line(1, 0.45),
-      } as any,
+    /* ТЭЭВРИЙН ЗАМ — машин яг үүгээр явна (Road_truck_SL, 32 шугам, 76 км).
+       Өмнөх хоёр давхаргыг бүрмөсөн орлоно: `Engineering_EMC/22` (CAD-ийн
+       зурган давхарга, граф болдоггүй) ба `Road_truck`.
+       Сервисийн өөрийн дүрслэл нимгэн саарал тул уншигдахуйц болгов. */
+    L.roadNet = new FeatureLayer({
+      url: SVC.roadTruck, title: "road-net", popupEnabled: false,
+      /* `on-the-ground` БИШ. Тэр нь ArcGIS-ийн дэлхийн DEM-д шаддаг ба
+         энэ талбайд DEM бараг хавтгай ≈1310 м. Ил уурхайн дотор бодит
+         гадаргуу 200 м гүн тул зам питийн ханан дээр агаарт зурагдаж,
+         машин (бодит мэш дээр явдаг) замаас хол зайд байх мэт харагдаж
+         байв. Хоёулаа НЭГ гадаргуу дээр байх ёстой. */
+      elevationInfo: { mode: "relative-to-scene", offset: 0 },
+      /* Анхдагчаар УНТРААЛТТАЙ — зурган дээр хиймэл өнгөт зураас
+         илүүдэж, хиймэл дагуулын зурган дээрх жинхэнэ замыг халхалдаг.
+         Машин энэ сүлжээгээр л явна; «Давхарга»-аас асааж болно. */
+      visible: false,
     });
-    function line(w: number, a: number, dash = false) {
-      const s: any = { type: "simple-line", color: hex(dark ? "#cfd6d3" : "#5b6663", a), width: w };
-      if (dash) s.style = "dash";
-      return s;
-    }
 
     L.dam = new FeatureLayer({
       url: SVC.dam, title: "dam", outFields: ["Date"], popupEnabled: false,
       elevationInfo: { mode: "on-the-ground" },
       /* Далангийн сервис 2024/01-ээс эхэлдэг — 2023 оны мөр байхгүй */
       definitionExpression: "Date = '2024/01'",
-      renderer: {
-        type: "simple",
-        symbol: {
-          type: "simple-fill", color: hex(dark ? "#4b93a2" : "#3f7f8c", 0.42),
-          outline: { color: hex(dark ? "#7fd4e6" : "#12525f", 1), width: 2.5 },
-        },
-      } as any,
     });
 
     /* Рендерерийг ДАРАХГҮЙ — сервис дээрх өөрийнх нь симбологи ажиллана:
@@ -167,23 +183,104 @@ export default function MineScene() {
 
     L.pile2d = new FeatureLayer({
       url: SVC.pile2d, title: "pile-2d", outFields: ["dugaar", "NAME"],
-      popupEnabled: false, visible: false, elevationInfo: { mode: "on-the-ground" },
+      popupEnabled: false, elevationInfo: { mode: "on-the-ground" },
       definitionExpression: pileWhere("dugaar"),
-      renderer: {
-        type: "simple",
-        symbol: { type: "simple-fill", color: [0, 0, 0, 0],
-                  outline: { color: hex(dark ? "#7d8886" : "#8a908d", 0.8), width: 1 } },
-      } as any,
+      /* Овоолго тутамд ЯГ НЭГ полигон — тунгалаг байдал давхарлахгүй тул
+         бүх овоолго ижил хэмжээгээр нэвт харагдана. */
+      labelsVisible: true,
+      labelingInfo: [{
+        labelExpressionInfo: { expression: "$feature.dugaar" },
+        labelPlacement: "above-center",
+        symbol: {
+          type: "label-3d",
+          symbolLayers: [{
+            type: "text", size: 9,
+            material: { color: [255, 244, 214, 1] },
+            halo: { color: [18, 26, 35, 0.85], size: 1.2 },
+            font: { family: "sans-serif", weight: "bold" },
+          }],
+          verticalOffset: { screenLength: 20, maxWorldLength: 600, minWorldLength: 24 },
+          callout: { type: "line", size: 0.8, color: [255, 244, 214, 0.55] },
+        },
+      }] as any,
     });
 
-    /* Рендерерийг ДАРАХГҮЙ — сервисийн өөрийн цагаан MeshSymbol3D.
-       definitionExpression нь Excel-д дурдагдсан 11 овоолгыг л үлдээнэ. */
+    /**
+     * Өнгөний горимоос хамаарах рендерерүүд.
+     *
+     * ArcGIS-ийн симбол өнгөө ҮҮСЭХ АГШИНД авдаг тул өдөр/шөнө солиход
+     * өөрөө шинэчлэгддэггүй. Тиймээс тэдгээрийг энд төвлөрүүлж, горим
+     * солигдох бүрт дахин тавина (store.tsx-аас `emc-theme` эвент ирнэ).
+     * Овоолгын 3D ба барилгын давхарга энд ОРООГҮЙ — тэдний рендерерийг
+     * дарахгүй, сервисийн өөрийнхөөр нь үлдээнэ.
+     */
+    function applyTheme() {
+      const d = isDark();
+      L.roadNet.renderer = {
+        type: "simple",
+        /* Нарийн шугам. Урьд нь 7 px байсан нь маршрутын өнгөт шугамын
+           «хүрээ» болох зорилготой байсан ба тэр давхарга хасагдсан тул
+           одоо шаардлагагүй — зузаан шугам зурган дээр давамгайлдаг. */
+        symbol: { type: "simple-line", width: 2, cap: "round", join: "round",
+                  color: hex(d ? "#e8d9a8" : "#7a6636", 0.85) },
+      } as any;
+      L.dam.renderer = {
+        type: "simple",
+        symbol: { type: "simple-fill", color: hex(d ? "#4b93a2" : "#3f7f8c", 0.42),
+                  outline: { color: hex(d ? "#7fd4e6" : "#12525f", 1), width: 2.5 } },
+      } as any;
+      /* Овоолгын ГАДНА тойрог — улаан, өнгөний горимоос үл хамаарна.
+         Бүх овоолго нэг хул шар өнгөтэй болсон тул зөвхөн энэ зураас ба
+         нэрийн шошго л тэднийг бие биеэс нь ялгана. */
+      /* Хул шар дүүргэлт + УЛААН гадна тойрог. Овоолгуудыг өнгөөр нь
+         ялгахгүй — улаан хил ба нэрийн шошго ялгана. */
+      L.pile2d.renderer = {
+        type: "simple",
+        symbol: {
+          type: "simple-fill",
+          color: [PILE_COLOR[0], PILE_COLOR[1], PILE_COLOR[2], 0.3],
+          outline: { color: PILE_EDGE, width: 1 },
+        },
+      } as any;
+    }
+    applyTheme();
+    window.addEventListener("emc-theme", applyTheme);
+
+    /* Овоолгын 3D эзэлхүүн — анхдагчаар УНТРААЛТТАЙ.
+       Сервист овоолго бүр олон битүү блокоос бүрдэнэ (Овоолго 12 — 20,
+       Овоолго 9 — 19, харин Овоолго 1 — 1). Тунгалаг байдал давхарлахад
+       үржигддэг тул (харагдах хувь = (1−α)^2N) нэг α-гаар ЖИГД тунгалаг
+       болгох боломжгүй: α = 0.34 үед Овоолго 1 нь 44 %, Овоолго 12 нь
+       0.03 % нэвт харагдана. Тиймээс овоолгыг ДООРХ 2D мөрөөр — овоолго
+       тутамд ЯГ НЭГ гадаргуугаар — үзүүлнэ. Бодит 3D хэлбэрийг нь
+       фотограмметрийн мэш аль хэдийн харуулж байна.
+       Хэрэгтэй бол «Давхарга»-аас асааж болно. */
     L.pile3d = new SceneLayer({
       url: SVC.pileScene, title: "pile-3d", outFields: ["RefName", "NAME"],
       popupEnabled: false, definitionExpression: pileWhere("RefName"),
+      visible: false, opacity: 0.34,
+      renderer: {
+        type: "simple",
+        symbol: {
+          type: "mesh-3d",
+          symbolLayers: [{
+            type: "fill",
+            material: { color: PILE_COLOR, colorMixMode: "replace" },
+          }],
+        },
+      } as any,
     });
 
-    L.pitMesh = new GraphicsLayer({ title: "pit-mesh", elevationInfo: { mode: "absolute-height" } });
+    /* Ил уурхайн БОДИТ гадаргуу (фотограмметр). Гараар зассан DWG-ийн
+       сарын мэшийг ОРЛОХГҮЙ — хоёулаа хэрэгтэй:
+         · энэ нь бодит харагдац, машин үүн дээр явна;
+         · DWG-ийн сарын мэш нь I–VI сарын ӨӨРЧЛӨЛТИЙГ харуулна
+           («Зөвхөн уурхай» горимд бараан дэвсгэр дээр гарна). */
+    L.im = new IntegratedMeshLayer({ url: SVC.pitMesh3d, title: "pit-reality-mesh" });
+
+    L.pitMesh = new GraphicsLayer({
+      title: "pit-mesh", elevationInfo: { mode: "absolute-height" }, visible: false,
+    });
     /* Урсгалын давхаргууд ГАЗРЫН ГАДАРГУУД НААЛДАНА.
        `absolute-height` дээр өндрийг өөрсдөө тооцох шаардлагатай болж,
        ил уурхайн ёроолоос (≈1177 м) эхэлсэн зам гадаргуугийн (≈1310 м)
@@ -191,18 +288,31 @@ export default function MineScene() {
        толгод бага зэргийн өргөлтийг ч халхалдаг. `on-the-ground` үед
        ArcGIS шугамыг гадаргуу дагуулж, цэгүүдийг гадаргуунд шахдаг —
        машин хэзээ ч агаарт хөвөхгүй, газрын дор ч орохгүй. */
-    /* `relative-to-scene` = гадаргуу БОЛОН сцен давхаргын (овоолго, барилга)
-       ХАМГИЙН ДЭЭД гадаргуугаас тоологдоно. `on-the-ground` үед зам нь
-       овоолгын 3D мэшийн доогуур орж далдарч байсан. */
-    const onScene = { mode: "relative-to-scene", offset: 4 } as const;
-    L.routes = new GraphicsLayer({ title: "routes", elevationInfo: onScene });
+    /* Урсгалын давхаргууд ГАЗРЫН ГАДАРГУУД НААЛДАНА.
+       `relative-to-scene` нь өндрийг гадаргуу биш, СЦЕН ДАВХАРГЫН (овоолго,
+       барилга) ОРОЙгоос тоолдог тул зам овоолгын мэшийн дээгүүр гарч
+       агаарт өлгөгдөж байв. Жинхэнэ тээврийн замын геометр орж ирснээр
+       зам овоолгуудыг тойрч өнгөрдөг болсон тул `on-the-ground` дээр
+       далдрах асуудал бараг байхгүй. */
+    /* Бодит мэш орж ирснээр газрын ЖИНХЭНЭ гадаргуу нь ArcGIS-ийн
+       хавтгай дэлхийн DEM биш, харин тэр мэш болов. `on-the-ground` нь
+       DEM-д шаддаг тул машин питийн дотор газрын дор орох байсан.
+       `relative-to-scene` нь сцен давхаргын (мөн бодит мэшийн) гадаргууг
+       дагадаг — геометрийн z нь тэр гадаргуугаас дээших шилжилт (=0). */
+    const onScene = { mode: "relative-to-scene", offset: 0 } as const;
     L.trucks = new GraphicsLayer({ title: "trucks", elevationInfo: onScene });
-    L.tails  = new GraphicsLayer({ title: "tailings", elevationInfo: onScene });
+    /* Хаягдлын хоолой нь ГАЗАР ДООР — гадаргуугаас 20 м доош.
+       Харагдахын тулд «Газрын гадаргуу» тохиргоог «Хагас» эсвэл
+       «Унтраах» болгоно. */
+    L.tails  = new GraphicsLayer({
+      title: "tailings",
+      elevationInfo: { mode: "relative-to-ground", offset: -TAIL_DEPTH },
+    });
 
     const map = new Map({
-      basemap: mkBasemap("imagery"),
-      layers: [L.roads, L.dam, L.bld, L.pile2d, L.pile3d, L.pitMesh,
-               L.routes, L.tails, L.trucks],
+      basemap: Basemap.fromId("satellite")!,
+      layers: [L.im, L.roadNet, L.dam, L.bld, L.pile2d, L.pile3d, L.pitMesh,
+               L.tails, L.trucks],
     });
     map.ground.layers.add(new ElevationLayer({ url: ELEV_URL }));
     map.ground.opacity = GROUND_OPACITY[0];
@@ -233,6 +343,21 @@ export default function MineScene() {
         } as any,
         popup: { autoOpenEnabled: false } as any,
       });
+      /* Esri-гийн СУУРЬ ЗУРГИЙН ГАЛЕРЕЙ — зүүн дээд буланд икон, дарахад
+         нээгдэнэ. Нэрсийг нь ОРЧУУЛАХГҮЙ, Esri-гийнхээр нь үлдээнэ.
+         Урьд нь энд өөрсдийн 4 товчтой самбар байсныг орлоно. */
+      view.ui.add(
+        new Expand({
+          view,
+          expandIcon: "basemap",
+          content: new BasemapGallery({
+            view,
+            source: BM_IDS.map((id) => Basemap.fromId(id)).filter(Boolean) as Basemap[],
+          }),
+        }),
+        "top-left",
+      );
+
       viewRef.current = view;
       return view;
     }
@@ -261,6 +386,7 @@ export default function MineScene() {
       .catch(() => setReady(true));
 
       return () => {
+        window.removeEventListener("emc-theme", applyTheme);
         if (flowTimer.current) window.clearTimeout(flowTimer.current);
         view.destroy();
         viewRef.current = null;
@@ -280,10 +406,13 @@ export default function MineScene() {
     const dests = await loadDests();
     if (!dests.length) { zoomTo(layersRef.current.pitMesh, undefined, 1.15); return; }
     destsRef.current = dests;
+    /* Зогсоолын шугам дээрх хөдөлгөөнгүй машинууд (уурхайн ажлын талбай,
+       үйлдвэрийн орчим). Сар солиход өөрчлөгдөхгүй тул нэг л удаа. */
+    parkedRef.current = await loadParked();
 
-    const bu = dests.find((d) => d.code === "BU");
-    const dam = await damCenter();
-    if (bu && dam) tailPath.current = tailingsPath(bu, dam);
+    /* Хаягдлын ГАЗАР ДООРХ хоолой — жинхэнэ шугам (Bayjuulah_hayagdal_line) */
+    tailPath.current = await loadTailLine();
+    drawTailPipe();
 
     rebuildFlow();
     frameFlow();
@@ -327,43 +456,22 @@ export default function MineScene() {
 
   function rebuildFlow() {
     const L = layersRef.current;
-    if (!destsRef.current.length || !L.routes) return;
+    if (!destsRef.current.length || !L.trucks) return;
 
-    const sim = new FlowSim(destsRef.current, stateRef.current.m, 14);
+    const sim = new FlowSim(destsRef.current, stateRef.current.m, 14, parkedRef.current);
     simRef.current = sim;
 
-    /* маршрутын шугам — өргөн нь тухайн чиглэлийн тонны хувьтай пропорциональ */
-    L.routes.removeAll();
-    const vals = sim.routes.map((r) => sumCol(stateRef.current.m, r.dest.col));
-    const mx = Math.max(...vals, 1);
-    sim.routes.forEach((r, k) => {
-      L.routes.add(new Graphic({
-        geometry: {
-          type: "polyline", spatialReference: { wkid: 4326 },
-          /* z = 0. `relative-to-scene` горимд геометрийн z нь ҮНЭМЛЭХҮЙ
-             өндөр биш, гадаргуугаас дээших ШИЛЖИЛТ гэж ойлгогддог тул
-             FlowSim-ийн 1177–1400 м-ийг дамжуулбал зам тэнгэрт өлгөгдөнө.
-             Өндрийг бүхэлд нь ArcGIS-ийн давхаргын тохиргоо шийднэ. */
-          paths: [r.pts.map((p) => [p.lon, p.lat, 0])],
-        } as any,
-        symbol: {
-          type: "line-3d",
-          symbolLayers: [{
-            /* Өргөнийг ШУУД биш КВАДРАТ ЯЗГУУРААР масштаблана: I сард
-               нийт 3 170-аас 3 130 нь БҮ-т очдог тул шугаман масштабаар
-               овоолгын чиглэлүүд үсний зузаан болж алга болж байсан. */
-            type: "line", size: 2.6 + Math.sqrt(vals[k] / mx) * 5,
-            material: { color: hex(cssVar(r.dest.color), 0.75) },
-            cap: "round", join: "round",
-          }],
-        } as any,
-      }));
-    });
-
+    /* Маршрутыг ТУСГАЙ ШУГАМААР ЗУРАХГҮЙ. Урьд нь чиглэл бүрийг өнгөт
+       шугамаар давхарлаж байсан нь `Road_truck_SL` замын дээгүүр гарч,
+       өөр нэг зам мэт уншигдаж байв. Одоо газрын зураг дээр ЗӨВХӨН
+       сервисийн зам харагдана; чиглэлийг машины ӨНГӨ, харин тонны
+       хэмжээг машины ТОО илэрхийлнэ. */
     L.trucks.removeAll();
     truckGfx.current = sim.trucks.map(() => new Graphic());
     truckKey.current = sim.trucks.map(() => "");
     L.trucks.addMany(truckGfx.current);
+
+
   }
 
   /** var(--x) -> бодит hex (ArcGIS-ийн материалд hex хэрэгтэй) */
@@ -373,14 +481,28 @@ export default function MineScene() {
     return getComputedStyle(document.documentElement).getPropertyValue(m[1]).trim() || "#888888";
   }
 
-  /** Бодит хэмжээ (12.8 x 6.2 м) нь уурхай + овоолгыг хамарсан 6 км-ийн
-      хүрээнд пикселийн доогуур ордог. Тиймээс масштабаас хамааруулан
-      томруулна — хэмжээг алхамчилсан тул тэмдэгт байнга солигдож
-      анивчихгүй (`truckKey`-г үз). */
+  /**
+   * Машины хэмжээ.
+   *
+   * Бодит хэмжээ (8.0 x 6.2 x 12.8 м) нь уурхай + овоолгыг хамарсан
+   * хүрээнд пикселийн доогуур ордог тул масштабаас хамааруулж бага зэрэг
+   * томруулна.
+   *
+   * ГЭХДЭЭ ХЭТ ТОМРУУЛЖ БОЛОХГҮЙ. Өмнө нь дээд хязгаар 40 м байсан
+   * (өргөн зумд 33 м -> 68 м урт). Ийм ӨНДӨР биет налуу камерт
+   * суурьнаасаа хэдэн арван метр тонгойж, машинууд замаас гарсан мэт
+   * болж байв. Мөн дүрслэлийн урт нь мөргөлдөөнөөс сэргийлэх зайнаас
+   * их байвал зайг хангасан ч НҮДЭНД давхцаж харагддаг: 29 м урт үед
+   * давхцал 471, 19 м үед 383 болдгийг хэмжсэн. Одоо 11 м-ээр
+   * (≈23 м урт) таслав.
+   *
+   * Хэмжээг алхамчилсан тул тэмдэгт байнга солигдож анивчихгүй
+   * (`truckKey`-г үз).
+   */
   function truckHeight() {
     const sc = viewRef.current?.scale ?? 20000;
-    const h = Math.max(6.2, Math.min(40, sc / 800));
-    return Math.round(h / 3) * 3 || 6;
+    const h = Math.max(6.2, Math.min(11, sc / 2200));
+    return Math.round(h * 2) / 2;
   }
 
   function drawTrucks() {
@@ -412,40 +534,123 @@ export default function MineScene() {
   }
 
   /** Хаягдлын урсгал — хоолойн дагуу хөдөлж буй цэгүүд */
+  /** Хоолойн дагуух хуримтлагдсан зай — дэд хэрчим таслахад хэрэгтэй */
+  function tailCum() {
+    const path = tailPath.current;
+    const cum = [0];
+    for (let i = 1; i < path.length; i++) {
+      const a = path[i - 1], b = path[i];
+      const la = ((a.lat + b.lat) / 2) * (Math.PI / 180);
+      cum.push(cum[i - 1] + Math.hypot(
+        (b.lon - a.lon) * 111320 * Math.cos(la), (b.lat - a.lat) * 110540));
+    }
+    return cum;
+  }
+
+  /** Хоолойн s0..s1 хэсгийн оройнууд */
+  function tailSeg(cum: number[], s0: number, s1: number) {
+    const path = tailPath.current;
+    const total = cum[cum.length - 1];
+    const a = Math.max(0, Math.min(total, s0));
+    const b = Math.max(0, Math.min(total, s1));
+    const at = (s: number) => {
+      let i = 1;
+      while (i < cum.length - 1 && cum[i] < s) i++;
+      const t = (s - cum[i - 1]) / Math.max(1e-6, cum[i] - cum[i - 1]);
+      const p = path[i - 1], q = path[i];
+      return [p.lon + (q.lon - p.lon) * t, p.lat + (q.lat - p.lat) * t, 0];
+    };
+    const out: number[][] = [at(a)];
+    for (let i = 1; i < cum.length - 1; i++) if (cum[i] > a && cum[i] < b) {
+      out.push([path[i].lon, path[i].lat, 0]);
+    }
+    out.push(at(b));
+    return out;
+  }
+
+  /**
+   * Хоолой өөрөө — нэг л удаа зурагдана.
+   *
+   * `line` биш `path` симбол: дугуй хөндлөн огтлолтой ЖИНХЭНЭ ХООЛОЙ
+   * (метрээр хэмжигдэнэ, зумаас хамаарахгүй). Хагас тунгалаг тул дотор нь
+   * урсаж буй бодис харагдана. Урьд нь нимгэн шугам дээгүүр бөмбөлөг
+   * өнхөрдөг байсан нь хоолой мэт огт уншигддаггүй байв.
+   */
+  function drawTailPipe() {
+    const L = layersRef.current;
+    const path = tailPath.current;
+    if (!L.tails || path.length < 2) return;
+    L.tails.removeAll();
+    tailGfx.current = [];
+    const geom = {
+      type: "polyline", spatialReference: { wkid: 4326 },
+      paths: [path.map((p) => [p.lon, p.lat, 0])],
+    } as any;
+    const tube = (d: number, color: [number, number, number, number]) => ({
+      type: "line-3d",
+      symbolLayers: [{
+        type: "path", profile: "circle", width: d, height: d,
+        cap: "round", join: "round",
+        material: { color }, castShadows: false,
+      }],
+    } as any);
+    /* 1) Хоолойн бүрхүүл — хагас тунгалаг */
+    L.tails.add(new Graphic({ geometry: geom, symbol: tube(PIPE_D, hex("#9fb6c4", 0.5)) }));
+    /* 2) УСНЫ ЦӨМ — хоолойн БҮХ УРТААР тасралтгүй. Урьд нь зөвхөн
+          хөдөлж буй хэрчмүүд байсан тул хоолой хоосон, ус тасархай
+          мэт харагддаг байв. */
+    L.tails.add(new Graphic({
+      geometry: geom, symbol: tube(FLOW_D, hex(cssVar("var(--water)"), 0.55)),
+    }));
+  }
+
+
   function drawTailings(tsec: number) {
     const L = layersRef.current;
     const path = tailPath.current;
     if (!L.tails || path.length < 2) return;
-    const N = 10;
+
+    /* Урсгалын НЯГТ ба ХУРД нь Excel-ийн тоогоор: «Агуулахад гаргасан
+       хүдэр (хаягдал)» + «Бохирдол, нийт» (сард 206–254 мян.тн).
+       Хуваарь 0-ээс эхэлнэ — сар хоорондын зөрүү бодитоор уншигдана. */
+    const q = sumCol(stateRef.current.m, C.AGU) + sumCol(stateRef.current.m, C.BOH);
+    const N = Math.max(4, Math.min(26, Math.round(q / 16)));
+    const spd = 0.02 + (q / 260) * 0.05;
+
+    const cum = tailCum();
+    const total = cum[cum.length - 1];
+
     if (tailGfx.current.length !== N) {
-      L.tails.removeAll();
+      L.tails.removeMany(tailGfx.current);
       tailGfx.current = Array.from({ length: N }, () => new Graphic());
       L.tails.addMany(tailGfx.current);
     }
-    const col = cssVar("var(--water)");
     for (let k = 0; k < N; k++) {
-      const t = ((tsec * 0.06 + k / N) % 1) * (path.length - 1);
-      const i = Math.floor(t), f = t - i;
-      const a = path[i], b = path[Math.min(path.length - 1, i + 1)];
+      const s0 = ((tsec * spd + k / N) % 1) * total;
       const g = tailGfx.current[k];
-      g.geometry = new Point({
-        longitude: a.lon + (b.lon - a.lon) * f,
-        latitude: a.lat + (b.lat - a.lat) * f,
-        z: 0,
-        spatialReference: { wkid: 4326 },
-      });
+      /* ГЕОМЕТРийг л шинэчилнэ — симбол хөндөгдөхгүй тул анивчихгүй */
+      g.geometry = {
+        type: "polyline", spatialReference: { wkid: 4326 },
+        paths: [tailSeg(cum, s0, Math.min(total, s0 + FLOW_SEG))],
+      } as any;
       if (!g.symbol) {
         g.symbol = {
-          type: "point-3d",
+          type: "line-3d",
           symbolLayers: [{
-            type: "object", resource: { primitive: "sphere" },
-            material: { color: hex(col, 1) },
-            width: 26, height: 26, depth: 26,
+            /* Усны цөмийн ДОТОР гүйх тод долгион. Цөм нь хагас тунгалаг
+               тул дотуур нь харагдана; цөм тасралтгүй учир эдгээр нь
+               хоосон зай биш, урсгалын хөдөлгөөнийг л заана. */
+            type: "path", profile: "circle",
+            width: WAVE_D, height: WAVE_D,
+            cap: "round", join: "round",
+            material: { color: hex("#cdeef7", 0.95) },
+            castShadows: false,
           }],
         } as any;
       }
     }
   }
+
 
   /* ---------------------------------------------------- туслах үйлдлүүд */
   function syncVisible() {
@@ -657,7 +862,7 @@ export default function MineScene() {
 
   /* --------------------------------------------------------- тусгаарлах */
   const prevVis = useRef<Record<string, boolean>>({});
-  const ISO = ["roads", "dam", "bld", "pile2d", "pile3d"];
+  const ISO = ["im", "roadNet", "dam", "bld", "pile2d", "pile3d"];
 
   function toggleIsolate() { applyIsolate(!isolated); }
 
@@ -669,6 +874,7 @@ export default function MineScene() {
     if (on) {
       prevVis.current = {};
       ISO.forEach((k) => { if (L[k]) { prevVis.current[k] = L[k].visible; L[k].visible = false; } });
+      prevBasemap.current = map.basemap ?? null;
       map.basemap = null as any;
       map.ground.opacity = 0;
       (map.ground as any).surfaceColor = "#12181a";
@@ -679,16 +885,18 @@ export default function MineScene() {
       (view.environment.lighting as any).date = new Date("2023-06-21T09:30:00+08:00");
     } else {
       ISO.forEach((k) => { if (L[k]) L[k].visible = prevVis.current[k] ?? true; });
-      map.basemap = new Basemap({
-        baseLayers: [new TileLayer({ url: BASEMAPS[basemapKey].url })], title: basemapKey,
-      });
+      /* Хэрэглэгч галерейгээс сонгосон суурь зургийг сэргээнэ */
+      map.basemap = prevBasemap.current ?? Basemap.fromId("satellite")!;
       map.ground.opacity = GROUND_OPACITY[groundStep];
       view.environment.atmosphereEnabled = true;
       (view.environment.lighting as any).directShadowsEnabled = false;
     }
 
     document.body.classList.toggle("isolated", on);
-    L.pitMesh.visible = true;
+    /* Сарын DWG мэш нь ЗӨВХӨН тусгаарлах горимд гарна — энгийн горимд
+       бодит мэштэй яг нэг зайг эзэлж, хоёулаа бүдгэрдэг. Хэрэгтэй бол
+       «Давхарга»-аас гараар асааж болно. */
+    L.pitMesh.visible = on;
     L.pitMesh.graphics.forEach((g: Graphic) => { g.symbol = meshSymbol(on); });
     if (on) setTimeout(() => zoomTo(L.pitMesh, undefined, 1.05), 60);
     syncVisible();
@@ -735,14 +943,14 @@ export default function MineScene() {
   const L = layersRef.current;
   const rows: { key: string; n: string; c: string }[] = [
     ...(L.pitSvc ? [{ key: "pitSvc", n: "Ил уурхай · сервис", c: "var(--g6)" }] : []),
+    { key: "im",      n: t.lyIm,     c: "#9aa6b2" },
     { key: "pitMesh", n: t.lyMesh,   c: "#8d7f70" },
-    { key: "pile3d",  n: t.lyPile3d, c: "var(--s2)" },
-    { key: "pile2d",  n: t.lyPile2d, c: "var(--s4)" },
+    { key: "pile3d",  n: t.lyPile3d, c: PILE_HEX },
+    { key: "pile2d",  n: t.lyPile2d, c: PILE_EDGE_HEX },
     { key: "dam",     n: t.lyDam,    c: "var(--water)" },
-    { key: "roads",   n: t.lyRoads,  c: "var(--ink-3)" },
+    { key: "roadNet", n: t.lyRoadNet, c: "#c9b57a" },
     { key: "bld",     n: t.lyBld,    c: BLD_COLOR.bu },
-    { key: "routes",  n: t.lyRoutes, c: "var(--s2)" },
-    { key: "trucks",  n: t.lyTrucks, c: "var(--g5)" },
+    { key: "trucks",  n: t.lyTrucks, c: TRUCK_COLOR.bu },
     { key: "tails",   n: t.lyTails,  c: "var(--water)" },
   ];
 
@@ -760,10 +968,6 @@ export default function MineScene() {
       <div className="mapwrap">
         <div id="viewDiv" ref={divRef} />
 
-        <div className="hintbar">
-          <span className="dotp" />
-          <span>{t.sceneHint}</span>
-        </div>
 
         {layersOpen && (
           <div className="layerbox">
@@ -787,18 +991,6 @@ export default function MineScene() {
               })}
             </div>
 
-            <div className="lbh" style={{ marginTop: 4 }}>{t.basemap}</div>
-            <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-              {(Object.keys(BASEMAPS) as BasemapKey[]).map((k) => (
-                <button key={k} className="ghost sm" aria-pressed={basemapKey === k}
-                        onClick={() => {
-                          setBasemapKey(k);
-                          mapRef.current!.basemap = new Basemap({
-                            baseLayers: [new TileLayer({ url: BASEMAPS[k].url })], title: k });
-                        }}>{BASEMAPS[k].nm[lang]}</button>
-              ))}
-            </div>
-
             <div className="lbh" style={{ marginTop: 4 }}>{t.ground}</div>
             <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
               {GROUND_OPACITY.map((o, i) => (
@@ -808,7 +1000,6 @@ export default function MineScene() {
                 </button>
               ))}
             </div>
-            <div className="lbnote">{t.groundNote}</div>
 
             <div className="lbsep" />
             <div className="lbh">{t.pitAdd}</div>
@@ -822,11 +1013,17 @@ export default function MineScene() {
         )}
 
         <div className="gradekey">
-          <span>{t.legGrade}</span>
+          {/* Толгойд бодит муж, доор нь квантилийн завсрууд. Урьд нь
+              0.15 / 0.50 гэсэн гараар бичсэн хоёр тоо байв. */}
+          <span>{t.legGrade} · {GRADE_RANGE[0].toFixed(2)}–{GRADE_RANGE[1].toFixed(2)}</span>
           <div className="ramp">
             {[1, 2, 3, 4, 5, 6].map((i) => <i key={i} style={{ background: `var(--g${i})` }} />)}
           </div>
-          <div className="rax"><span>0.15</span><span>0.50</span></div>
+          <div className="rax">
+            {GRADE_BREAKS.map((b, i) => (
+              <b key={i} style={{ left: `${((i + 1) / 6) * 100}%` }}>{b.toFixed(2)}</b>
+            ))}
+          </div>
           <div className="rlegoff"><i /><span>{t.legOff}</span></div>
         </div>
 

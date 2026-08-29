@@ -1,3 +1,5 @@
+import { GRADE_BREAKS } from "./excel";
+
 /** Мянгатыг зайгаар тусгаарлана. 0 / null бол «—». */
 export function fmt(n: number | null | undefined, d = 1): string {
   if (!n) return "—";
@@ -6,16 +8,12 @@ export function fmt(n: number | null | undefined, d = 1): string {
   return (n < 0 ? "−" : "") + p.join(".");
 }
 
-/** CSS хувьсагчийн утга (браузер талд) */
-export function css(v: string): string {
-  if (typeof window === "undefined") return "";
-  return getComputedStyle(document.documentElement).getPropertyValue(v).trim();
-}
-
-/** Cu агуулга -> зэсийн ramp дахь алхам (--g1 … --g6) */
+/** Cu агуулга -> зэсийн ramp дахь алхам (--g1 … --g6).
+ *  Завсрууд нь өгөгдлөөс тооцогдсон квантиль (lib/excel.ts). */
 export function gradeVar(cu: number): string {
-  const t = Math.max(0, Math.min(0.999, (cu - 0.15) / 0.35));
-  return `--g${1 + Math.floor(t * 6)}`;
+  let i = 0;
+  while (i < GRADE_BREAKS.length && cu >= GRADE_BREAKS[i]) i++;
+  return `--g${i + 1}`;
 }
 
 /** CSS-д шууд тавих утга. getComputedStyle-ийг ашиглахгүй — Next-ийн

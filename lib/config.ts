@@ -13,10 +13,22 @@ export const SVC = {
   pileScene: `${AGOL}/${encodeURIComponent("Нийт_овоолго_2026")}/SceneServer`,
   /** Овоолго — 2D хүрээ */
   pile2d: `${AGOL}/Owoolgo_medee/FeatureServer/4`,
+  /** Баяжуулах үйлдвэрээс хаягдлын далан руу — ГАЗАР ДООРХ хоолой.
+   *  1 шугам, 43 орой, 4.36 км. Чиглэл: үйлдвэр -> далан. */
+  tailLine: `${AGOL}/Bayjuulah_hayagdal_line/FeatureServer/0`,
   /** Хаягдлын далан */
   dam: `${AGOL}/Lake2024_update241016/FeatureServer/0`,
-  /** Зам — орчны мэдээлэл */
-  roads: `${AGOL}/Engineering_EMC/FeatureServer/22`,
+  /** ТЭЭВРИЙН замын тэнхлэг — 32 шугам, 76 км. Машины маршрут яг үүгээр
+   *  тооцогдоно (tools/build_haul_routes.py -> public/data/haul_routes.json).
+   *  Өмнөх `Road_truck` болон `Engineering_EMC/22` хоёрыг орлоно. */
+  roadTruck: `${AGOL}/Road_truck_SL/FeatureServer/0`,
+  /** Ил уурхайн БОДИТ гадаргуу — фотограмметрийн integrated mesh.
+   *  lon 104.107–104.144, lat 49.013–49.033 (2.7 x 2.2 км), z 1139–1460 м.
+   *  ӨӨР ХОСТ дээр (EMC-ийн ArcGIS Enterprise) — TLS Let's Encrypt,
+   *  CORS нь Origin-г тусгадаг тул браузераас шууд ачаалагдана.
+   *  Өмнө нь AGOL-ийн `Mesh_Process2` байсан (илүү өргөн, овоолгыг ч
+   *  хамардаг); энэ нь зөвхөн ил уурхайг нарийвчлан хамарна. */
+  pitMesh3d: "https://arcgis.ubhub.mn/arcgis/rest/services/Hosted/emc_openpit_2/SceneServer",
   /** Үйлдвэрийн барилга — 3D сцен */
   bld: `${AGOL}/Multipatch_EMC/SceneServer`,
   /** Мөн барилгын атрибутыг ЭНДЭЭС уншина (доорх тайлбарыг үз) */
@@ -33,12 +45,12 @@ export const C = {
 export const COL_NAMES = {
   mn: [
     "Олборлосон үйлдвэрлэлийн нөөц (захын агуулга 0.25%)",
-    "Үүнээс — БҮ-т",
+    "Үүнээс — Баяжуулах үйлдвэрт",
     "Үүнээс — Агуулахад гаргасан хүдэр (хаягдал)",
     "Бохирдол, нийт",
     "Захын агуулга 0.25% — хаягдал",
     "Захын агуулга 0.25% — бохирдол",
-    "Нийт олборлосон хүдэр — БҮ-т",
+    "Нийт олборлосон хүдэр — Баяжуулах үйлдвэрт",
     "Нийт олборлосон хүдэр — Овоолго 12",
     "Нийт олборлосон хүдэр — Овоолго 14",
     "Нийт олборлосон хүдэр — Овоолго 8а",
@@ -99,7 +111,7 @@ for (const ci of Object.keys(COL2PILES)) {
 }
 
 /** Excel-д дурдагдсан овоолгууд — ЗӨВХӨН эдгээр газрын зураг дээр гарна */
-export const EXCEL_PILES = Array.from(
+const EXCEL_PILES = Array.from(
   new Set([...Object.keys(PILE2COL), ...Object.values(BLK2PILE)]),
 );
 
@@ -120,26 +132,29 @@ export const BU_TYPE = 1;
 /** Барилгын өнгө нь СЕРВИС дээрээ тодорхойлогдсон — renderer дарахгүй */
 export const BLD_COLOR = { bu: "#ffebbe", other: "#e1e1e1" } as const;
 
+/** Овоолгын нэгдсэн өнгө — хул шар. Овоолгуудыг өнгөөр нь ялгахгүй,
+ *  бүгд ижил өнгөтэй бөгөөд НЭРЭЭРЭЭ ялгагдана. */
+export const PILE_COLOR: [number, number, number, number] = [201, 165, 84, 1];
+export const PILE_HEX = "#c9a554";
+/** Овоолгын ГАДНА тойрог — овоолгуудыг бие биеэс нь ялгах цорын ганц зураас */
+export const PILE_EDGE: [number, number, number, number] = [224, 72, 58, 1];
+export const PILE_EDGE_HEX = "#e04839";
+
+/** Ачааны машины ГУРВАН төрөл — очих газрын ангиллаар.
+ *  Цуврал өнгө биш, тогтмол утга: чартын ангилалтай холбоогүй. */
+export const TRUCK_COLOR = {
+  bu:    "#3aa0f0",   // цэнхэр — баяжуулах үйлдвэр
+  ore:   "#e8c14a",   // шар    — балансын овоолго
+  waste: "#2fbf7a",   // ногоон — балансын бус овоолго
+  park:  "#e0483a",   // улаан  — зогсоолын машин
+} as const;
+
 /** Питийн хаялбарууд — Excel-ийн «Түвшин» баганын бүх утга */
 export const ELEV = [
   1460, 1445, 1430, 1415, 1400, 1385, 1370, 1355, 1340, 1325,
   1310, 1295, 1280, 1265, 1250, 1235, 1220, 1205, 1190, 1175,
 ];
 
-/** Суурь зураг — Esri-гийн вектор сан API key шаарддаг тул
- *  түлхүүр шаардахгүй services.arcgisonline.com кэшийг ашиглана */
-export const BASEMAPS = {
-  imagery: { nm: { mn: "Хиймэл дагуул", en: "Imagery" },
-             url: "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer" },
-  topo:    { nm: { mn: "Байр зүй", en: "Topographic" },
-             url: "https://services.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer" },
-  gray:    { nm: { mn: "Саарал", en: "Gray canvas" },
-             url: "https://services.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer" },
-  graylt:  { nm: { mn: "Цайвар саарал", en: "Light canvas" },
-             url: "https://services.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer" },
-} as const;
-
-export type BasemapKey = keyof typeof BASEMAPS;
 
 export const ELEV_URL =
   "https://elevation3d.arcgis.com/arcgis/rest/services/WorldElevation3D/Terrain3D/ImageServer";
