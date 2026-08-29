@@ -1,235 +1,269 @@
 # -*- coding: utf-8 -*-
 """
-Тээврийн маршрут: ил уурхайгаас хүлээн авагч бүр рүү — ЖИНХЭНЭ замаар
+Тээврийн маршрутыг ЖИНХЭНЭ замын сүлжээгээр тооцно.
 
-Ажиллуулах (ArcGIS Pro-гийн python):
-  "C:\\Program Files\\ArcGIS\\Pro\\bin\\Python\\envs\\arcgispro-py3\\python.exe" tools/build_haul_routes.py
+    python tools/build_haul_routes.py
 
-Гаралт: public/data/haul_routes.json
+Оролт
+    Road_truck/FeatureServer/0 — 35 шугам, 77 км, тээврийн замын сүлжээ
+    Owoolgo_medee/FeatureServer/4 — овоолгын 2D хүрээ
+    Multipatch_EMC/FeatureServer/0 (type1 = 1) — баяжуулах үйлдвэр
+    public/data/pit_mesh.json — ил уурхайн ачаалах цэг
 
-Яагаад ArcGIS хэрэгтэй вэ:
-  «Зам» давхаргын 3 568 шугам нь CAD-аас гаралтай тул огтлолцол дээрээ
-  нийтлэг оройгүй — түүхийгээр нь граф болгоход хамгийн том холбогдсон
-  бүрэлдэхүүн ердөө 10 зангилаа гарсан. `FeatureToLine` нь огтлолцол бүрт
-  шугамыг тасалж (планаржуулж) жинхэнэ сүлжээ болгоно.
+Гаралт
+    public/data/haul_routes.json
 
-Дараа нь: зангилааг 1 м-ийн нарийвчлалаар нэгтгэж граф байгуулаад,
-питийн ачаалах цэгээс хүлээн авагч бүр рүү Dijkstra-гаар хамгийн богино
-замыг олно. Урт нь налууг тооцсон 3D урт.
+АРГА
+  1. Шугам бүрийн оройг метр рүү (ойролцоо тэгш өнцөгт) хөрвүүлж, 1 м-ээс
+     ойр давхардсаныг нь хаяна.
+  2. Зангилаа нэгтгэх: ӨӨР шугамын оройнууд SNAP метрийн дотор байвал нэг
+     зангилаа болгож union-find-аар нийлүүлнэ. SNAP = 15 м үед сүлжээ 100 %
+     нэг бүрэлдэхүүн болдог (10 м үед 99 %, 2 м үед ердөө 38 %) — тээврийн
+     зам 30+ м өргөн, оройнууд яг давхцаж дижитайзчигдаагүй.
+  3. Ачаалах цэг ба хүлээн авагч бүрийг сүлжээний ХАМГИЙН ОЙРЫН зангилаанд
+     наана. Хүлээн авагчийн хувьд түүний полигоны БҮХ оройг харьцуулна —
+     төвөөр нь тооцвол том овоолгын хувьд хэдэн зуун метр алдаа гарна.
+  4. Ачаалах цэгээс хүлээн авагч бүр рүү Dijkstra-аар хамгийн богино зам.
+
+ХЯЗГААР
+  Хэрэв зам тухайн овоолгод хүрэхгүй бол сүүлчийн зангилаанаас полигон
+  хүртэл ШУЛУУН холбоос нэмнэ. Уг холбоосын уртыг `stub` талбарт бичиж,
+  гаралтын лог дээр анхааруулна — зохиосон зам болохыг нь мэдэж байх ёстой.
 """
-import arcpy, os, json, math, heapq, shutil
-from collections import defaultdict
+import json, math, os, heapq, collections, urllib.request, urllib.parse
+
+AGOL = "https://services7.arcgis.com/iErGCwr6emXIFjPR/arcgis/rest/services"
+ROADS = f"{AGOL}/Road_truck/FeatureServer/0"
+PILE2D = f"{AGOL}/Owoolgo_medee/FeatureServer/4"
+BLDFS = f"{AGOL}/Multipatch_EMC/FeatureServer/0"
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = os.path.join(ROOT, "public", "data", "haul_routes.json")
+PIT = os.path.join(ROOT, "public", "data", "pit_mesh.json")
 
-AGOL = "https://services7.arcgis.com/iErGCwr6emXIFjPR/arcgis/rest/services"
-ROADS = AGOL + "/Engineering_EMC/FeatureServer/22"
-PILES = AGOL + "/Owoolgo_medee/FeatureServer/4"
-BLD = AGOL + "/Multipatch_EMC/FeatureServer/0"
+SNAP = 15.0          # зангилаа нэгтгэх хүлцэл, м
+LAT0 = 49.02
+SX = 111320.0 * math.cos(math.radians(LAT0))
+SY = 110540.0
 
-SR = arcpy.SpatialReference(4326)
-SNAP_M = 1.0                     # зангилаа нэгтгэх нарийвчлал, м
-PIT_ENV = (104.1086, 49.0072, 104.1492, 49.0329)
-
-# Excel-ийн хүлээн авагч -> газарзүйн бай
+# Excel-ийн багана -> хүлээн авагч. lib/flow.ts дахь DEST_DEF-тэй тохирно.
 DESTS = [
-    ("BU",     "Баяжуулах үйлдвэр",        None),
-    ("OV12",   "Овоолго 12",               ["Овоолго 12"]),
-    ("OV14",   "Овоолго 14",               ["Овоолго 14"]),
-    ("OV8A",   "Овоолго 8а",               ["Овоолго 8а"]),
-    ("OV9A",   "Овоолго 9а · 8 · 9",       ["Овоолго 9а", "Овоолго 8", "Овоолго 9"]),
-    ("OV9B",   "Овоолго 9б",               ["Овоолго 9б"]),
-    ("HOOSON", "Овоолго №1, 4, 11",        ["Овоолго 1", "Овоолго 4", "Овоолго 11"]),
+    ("BU",     "Баяжуулах үйлдвэр",  None),
+    ("OV12",   "Овоолго 12",         ["Овоолго 12"]),
+    ("OV14",   "Овоолго 14",         ["Овоолго 14"]),
+    ("OV8A",   "Овоолго 8а",         ["Овоолго 8а"]),
+    ("OV9A",   "Овоолго 9а · 8 · 9", ["Овоолго 9а", "Овоолго 8", "Овоолго 9"]),
+    ("OV9B",   "Овоолго 9б",         ["Овоолго 9б"]),
+    ("HOOSON", "Овоолго №1, 4, 11",  ["Овоолго 1", "Овоолго 4", "Овоолго 11"]),
 ]
 
-arcpy.env.overwriteOutput = True
-arcpy.env.outputZFlag = "Enabled"
 
-scratch = os.path.join(os.environ.get("TEMP", "."), "haul")
-if os.path.isdir(scratch):
-    shutil.rmtree(scratch, ignore_errors=True)
-os.makedirs(scratch)
-gdb = os.path.join(scratch, "w.gdb")
-arcpy.management.CreateFileGDB(scratch, "w.gdb")
-
-KX = 111320 * math.cos(math.radians(49.02))
-KY = 110540
+def get(url, params):
+    q = urllib.parse.urlencode(params)
+    with urllib.request.urlopen(f"{url}/query?{q}", timeout=90) as r:
+        return json.load(r)
 
 
-def m_xy(lon, lat):
-    return lon * KX, lat * KY
+def xy(lon, lat):
+    return (lon * SX, lat * SY)
 
 
-def dist3(a, b):
-    ax, ay = m_xy(a[0], a[1]); bx, by = m_xy(b[0], b[1])
-    dz = (b[2] or 0) - (a[2] or 0)
-    return math.sqrt((bx - ax) ** 2 + (by - ay) ** 2 + dz * dz)
+def lonlat(p):
+    return (round(p[0] / SX, 7), round(p[1] / SY, 7))
 
 
-def nkey(p):
-    x, y = m_xy(p[0], p[1])
-    return (int(round(x / SNAP_M)), int(round(y / SNAP_M)))
+def d2(a, b):
+    return (a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2
 
 
-# ------------------------------------------------- 1) зам -> планаржуулах
-print("зам татаж байна…", flush=True)
-raw = os.path.join(gdb, "roads_raw")
-arcpy.management.CopyFeatures(ROADS, raw)
-print("  түүхий:", arcpy.management.GetCount(raw)[0], flush=True)
+class UF:
+    def __init__(self, n):
+        self.p = list(range(n))
 
-pl = os.path.join(gdb, "roads_planar")
-arcpy.management.FeatureToLine(raw, pl, "0.5 Meters", "NO_ATTRIBUTES")
-print("  планаржуулсан:", arcpy.management.GetCount(pl)[0], flush=True)
+    def find(self, x):
+        while self.p[x] != x:
+            self.p[x] = self.p[self.p[x]]
+            x = self.p[x]
+        return x
 
-prj = os.path.join(gdb, "roads_wgs")
-arcpy.management.Project(pl, prj, SR)
-
-# ------------------------------------------------------------ 2) граф
-adj = defaultdict(list)          # nkey -> [(nkey, урт, [цэгүүд])]
-pos = {}                         # nkey -> (lon, lat, z)
-with arcpy.da.SearchCursor(prj, ["SHAPE@"]) as cur:
-    for (shp,) in cur:
-        if shp is None:
-            continue
-        for part in shp:
-            pts = [(p.X, p.Y, p.Z if p.Z is not None else 0.0) for p in part if p]
-            if len(pts) < 2:
-                continue
-            a, b = nkey(pts[0]), nkey(pts[-1])
-            if a == b:
-                continue
-            L = sum(dist3(pts[i], pts[i + 1]) for i in range(len(pts) - 1))
-            pos.setdefault(a, pts[0]); pos.setdefault(b, pts[-1])
-            adj[a].append((b, L, pts))
-            adj[b].append((a, L, pts[::-1]))
-
-print("зангилаа:", len(pos), "| ирмэг:", sum(len(v) for v in adj.values()) // 2, flush=True)
-
-# хамгийн том холбогдсон бүрэлдэхүүн
-seen, best = set(), []
-for n in pos:
-    if n in seen:
-        continue
-    stack, comp = [n], []
-    seen.add(n)
-    while stack:
-        c = stack.pop(); comp.append(c)
-        for (m, _, _) in adj[c]:
-            if m not in seen:
-                seen.add(m); stack.append(m)
-    if len(comp) > len(best):
-        best = comp
-core = set(best)
-print("хамгийн том бүрэлдэхүүн: %d зангилаа (%.0f%%)" % (len(core), len(core) / len(pos) * 100), flush=True)
+    def union(self, a, b):
+        a, b = self.find(a), self.find(b)
+        if a != b:
+            self.p[b] = a
 
 
-def nearest_node(lon, lat, within=None):
-    tx, ty = m_xy(lon, lat)
-    bn, bd = None, 1e18
-    src = within if within is not None else pos.keys()
-    for k in src:
-        p = pos[k]
-        x, y = m_xy(p[0], p[1])
-        d = (x - tx) ** 2 + (y - ty) ** 2
-        if d < bd:
-            bd, bn = d, k
-    return bn, math.sqrt(bd)
+def build_graph():
+    d = get(ROADS, {"where": "1=1", "returnGeometry": "true", "outSR": "4326",
+                    "f": "json", "resultRecordCount": 5000})
+    chains = []
+    for f in d["features"]:
+        for path in f["geometry"]["paths"]:
+            ch = []
+            for lon, lat in ((p[0], p[1]) for p in path):
+                q = xy(lon, lat)
+                if not ch or d2(ch[-1], q) > 1.0:
+                    ch.append(q)
+            if len(ch) > 1:
+                chains.append(ch)
+
+    pts = [q for ch in chains for q in ch]
+
+    uf = UF(len(pts))
+    grid = collections.defaultdict(list)
+    for i, q in enumerate(pts):
+        grid[(int(q[0] // SNAP), int(q[1] // SNAP))].append(i)
+    t2 = SNAP * SNAP
+    for i, q in enumerate(pts):
+        gx, gy = int(q[0] // SNAP), int(q[1] // SNAP)
+        for dx in (-1, 0, 1):
+            for dy in (-1, 0, 1):
+                for j in grid.get((gx + dx, gy + dy), ()):
+                    if j > i and d2(q, pts[j]) <= t2:
+                        uf.union(i, j)
+
+    node, coords = {}, []
+    for i in range(len(pts)):
+        r = uf.find(i)
+        if r not in node:
+            node[r] = len(coords)
+            coords.append(pts[i])
+    nid = [node[uf.find(i)] for i in range(len(pts))]
+
+    adj = collections.defaultdict(list)
+    k = 0
+    for ch in chains:
+        for a in range(len(ch) - 1):
+            u, v = nid[k + a], nid[k + a + 1]
+            if u != v:
+                w = math.sqrt(d2(coords[u], coords[v]))
+                adj[u].append((v, w))
+                adj[v].append((u, w))
+        k += len(ch)
+    return coords, adj
 
 
-# --------------------------------------------- 3) ачаалах цэг ба хүлээн авагч
-# Питийн ачаалах цэг = питийн хүрээн доторх ХАМГИЙН НАМ зангилаа
-pit_nodes = [k for k in core
-             if PIT_ENV[0] <= pos[k][0] <= PIT_ENV[2] and PIT_ENV[1] <= pos[k][1] <= PIT_ENV[3]]
-if not pit_nodes:
-    raise SystemExit("Питийн хүрээнд зам олдсонгүй")
-load_node = min(pit_nodes, key=lambda k: pos[k][2])
-print("ачаалах цэг: %.6f, %.6f, %.0f м" % pos[load_node], flush=True)
+def nearest(coords, targets):
+    """targets доторх аль нэг цэгт хамгийн ойр байх зангилаа -> (idx, зай)"""
+    best, bd = -1, float("inf")
+    for i, c in enumerate(coords):
+        for t in targets:
+            e = d2(c, t)
+            if e < bd:
+                bd, best = e, i
+    return best, math.sqrt(bd)
 
 
-def extent_center(url, where):
-    d = arcpy.da.SearchCursor  # ашиглахгүй — REST-ээр авна
-    import urllib.request, urllib.parse, gzip as gz
-    q = urllib.parse.urlencode({"where": where, "returnExtentOnly": "true",
-                                "outSR": "4326", "f": "json"})
-    req = urllib.request.Request(url + "/query?" + q, headers={"Accept-Encoding": "gzip"})
-    with urllib.request.urlopen(req, timeout=60) as r:
-        b = r.read()
-    if b[:2] == b"\x1f\x8b":
-        b = gz.decompress(b)
-    e = json.loads(b.decode("utf-8")).get("extent")
-    if not e:
-        return None
-    return ((e["xmin"] + e["xmax"]) / 2, (e["ymin"] + e["ymax"]) / 2)
+def access_node(coords, targets, reach=300.0):
+    """
+    Хүлээн авагчид ХҮРЭХ зангилаа.
+
+    Зүгээр «полигоны аль нэг оройд хамгийн ойр» гэвэл хөрш овоолгууд нэг
+    зангилаа сонгодог: «Овоолго 9» зүүн тийш 104.1358 хүртэл сунадаг тул
+    «Овоолго 12»-той нийлж, дэлгэц дээр хоёр яг ижил маршрут гардаг байв.
+    Тиймээс эхлээд полигоноос `reach` метрийн дотор байгаа зангилаануудыг
+    нэр дэвшүүлж, дотроос нь ТӨВД хамгийн ойрыг сонгоно — зам овоолгын
+    захын үзүүр рүү биш, биен рүү нь чиглэнэ.
+    """
+    cx = sum(t[0] for t in targets) / len(targets)
+    cy = sum(t[1] for t in targets) / len(targets)
+    r2 = reach * reach
+    cand = []
+    for i, c in enumerate(coords):
+        dv = min(d2(c, t) for t in targets)
+        if dv <= r2:
+            # оноо = полигон хүртэлх зай + 0.4 × төв хүртэлх зай.
+            # Цэвэр төвөөр сонговол зам овоолгын биен рүү чиглэх ч зайлшгүй
+            # 150–250 м-ийн зохиомол холбоос үлддэг; цэвэр ойрхноор сонговол
+            # хөрш овоолгууд нийлдэг. Хоёрын дундаж нь хоёуланг шийднэ.
+            cand.append((math.sqrt(dv) + 0.4 * math.sqrt(d2(c, (cx, cy))),
+                         i, math.sqrt(dv)))
+    if not cand:
+        return nearest(coords, targets)
+    cand.sort()
+    return cand[0][1], cand[0][2]
 
 
-# ------------------------------------------------------------ 4) Dijkstra
-def shortest(src, dst):
-    dist = {src: 0.0}
-    prev = {}
+def dijkstra(adj, src, n):
+    dist = [float("inf")] * n
+    prev = [-1] * n
+    dist[src] = 0.0
     pq = [(0.0, src)]
     while pq:
-        d, u = heapq.heappop(pq)
-        if u == dst:
-            break
-        if d > dist.get(u, 1e18):
+        dv, u = heapq.heappop(pq)
+        if dv > dist[u]:
             continue
-        for (v, L, pts) in adj[u]:
-            nd = d + L
-            if nd < dist.get(v, 1e18):
+        for v, w in adj[u]:
+            nd = dv + w
+            if nd < dist[v]:
                 dist[v] = nd
-                prev[v] = (u, pts)
+                prev[v] = u
                 heapq.heappush(pq, (nd, v))
-    if dst not in dist:
-        return None, 0
-    path, cur = [], dst
-    while cur != src:
-        u, pts = prev[cur]
-        path = list(pts) + path
-        cur = u
-    return path, dist[dst]
+    return dist, prev
 
 
-routes = {}
-for code, name, piles in DESTS:
-    if piles:
-        where = " OR ".join("dugaar = '%s'" % p for p in piles)
-        c = extent_center(PILES, where)
+def dest_points(piles):
+    """Хүлээн авагчийн полигоны бүх орой (метрээр)."""
+    if piles is None:
+        where = "type1 = 1"
+        url = BLDFS
     else:
-        c = extent_center(BLD, "type1 = 1")
-    if not c:
-        print("  %-7s бай олдсонгүй" % code, flush=True)
-        continue
+        where = " OR ".join(f"dugaar = '{p}'" for p in piles)
+        url = PILE2D
+    d = get(url, {"where": where, "returnGeometry": "true", "outSR": "4326",
+                  "f": "json", "geometryPrecision": 6, "resultRecordCount": 5000})
+    out = []
+    for f in d.get("features", []):
+        g = f.get("geometry") or {}
+        for ring in g.get("rings", []) or g.get("paths", []):
+            out.extend(xy(p[0], p[1]) for p in ring)
+        if "x" in g:
+            out.append(xy(g["x"], g["y"]))
+    return out
 
-    tn, snap = nearest_node(c[0], c[1], core)
-    path, L = shortest(load_node, tn)
-    if not path:
-        print("  %-7s зам холбогдохгүй" % code, flush=True)
-        continue
 
-    # цэгүүдийг сийрэгжүүлж, 6 оронтой болгоно
-    thin = [path[0]]
-    for p in path[1:]:
-        if dist3(thin[-1], p) > 4:
-            thin.append(p)
-    if thin[-1] != path[-1]:
-        thin.append(path[-1])
+def main():
+    coords, adj = build_graph()
+    print(f"сүлжээ: {len(coords)} зангилаа, {sum(len(v) for v in adj.values()) // 2} ирмэг "
+          f"(SNAP {SNAP:.0f} м)")
 
-    routes[code] = {
-        "name": name,
-        "len": round(L, 1),
-        "snap": round(snap, 1),
-        "path": [[round(p[0], 6), round(p[1], 6), round(p[2], 1)] for p in thin],
-    }
-    print("  %-7s %-22s %6.0f м · %4d цэг · буулт %.0f м"
-          % (code, name, L, len(thin), snap), flush=True)
+    pit = json.load(open(PIT, encoding="utf-8"))["1"]
+    src, src_d = nearest(coords, [xy(pit["lon"], pit["lat"])])
+    print(f"ачаалах цэг -> сүлжээ: {src_d:.0f} м")
 
-out = {
-    "load": [round(pos[load_node][0], 6), round(pos[load_node][1], 6), round(pos[load_node][2], 1)],
-    "routes": routes,
-}
-os.makedirs(os.path.dirname(OUT), exist_ok=True)
-with open(OUT, "w", encoding="utf-8") as f:
-    json.dump(out, f, ensure_ascii=False, separators=(",", ":"))
-print("бичив public/data/haul_routes.json  (%d маршрут, %.1f KB)"
-      % (len(routes), os.path.getsize(OUT) / 1024))
+    dist, prev = dijkstra(adj, src, len(coords))
+
+    out = {}
+    for code, name, piles in DESTS:
+        tgt = dest_points(piles)
+        if not tgt:
+            print(f"  {code:<7} ГЕОМЕТР ОЛДСОНГҮЙ")
+            continue
+        dn, stub = access_node(coords, tgt)
+        if dist[dn] == float("inf"):
+            print(f"  {code:<7} ЗАМ ОЛДСОНГҮЙ (сүлжээ тасарсан)")
+            continue
+        path = []
+        u = dn
+        while u != -1:
+            path.append(u)
+            u = prev[u]
+        path.reverse()
+        pts = [lonlat(coords[i]) for i in path]
+
+        # Сүлжээ хүлээн авагчид хүрэхгүй бол шулуун холбоос нэмнэ
+        if stub > 25:
+            near = min(tgt, key=lambda t: d2(coords[dn], t))
+            pts.append(list(lonlat(near)))
+
+        out[code] = {"name": name, "pts": pts,
+                     "len": round(dist[dn]), "stub": round(stub)}
+        flag = "  ← ЗОХИОМОЛ ХОЛБООС" if stub > 300 else ""
+        print(f"  {code:<7} {dist[dn]/1000:6.2f} км · {len(pts):>4} цэг · "
+              f"буулт {stub:5.0f} м{flag}")
+
+    json.dump(out, open(OUT, "w", encoding="utf-8"), ensure_ascii=False)
+    print(f"\n{OUT}  ({os.path.getsize(OUT)/1024:.0f} КБ)")
+
+
+if __name__ == "__main__":
+    main()

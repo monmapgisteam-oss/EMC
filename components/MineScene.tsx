@@ -307,9 +307,11 @@ export default function MineScene() {
   function frameFlow() {
     const v = viewRef.current;
     if (!v || !destsRef.current.length) return;
-    const lp = loadPoint();
-    const lons = [lp.lon, ...destsRef.current.map((d) => d.lon)];
-    const lats = [lp.lat, ...destsRef.current.map((d) => d.lat)];
+    /* Маршрутын БҮХ орой — уурхай, хүлээн авагч, замууд бүгд багтана */
+    const all = destsRef.current.flatMap((d) => d.path);
+    if (!all.length) return;
+    const lons = all.map((p) => p[0]);
+    const lats = all.map((p) => p[1]);
     const pad = 0.002;
     v.goTo({
       target: {
@@ -321,18 +323,13 @@ export default function MineScene() {
     } as any, { duration: 1400 }).catch(() => {});
   }
 
-  function loadPoint() {
-    const info = meshInfo.current[String(stateRef.current.m)];
-    return info
-      ? { lon: info.lon, lat: info.lat, z: info.z + 10 }
-      : { lon: 104.129, lat: 49.02, z: 1200 };
-  }
+
 
   function rebuildFlow() {
     const L = layersRef.current;
     if (!destsRef.current.length || !L.routes) return;
 
-    const sim = new FlowSim(loadPoint(), destsRef.current, stateRef.current.m, 14);
+    const sim = new FlowSim(destsRef.current, stateRef.current.m, 14);
     simRef.current = sim;
 
     /* маршрутын шугам — өргөн нь тухайн чиглэлийн тонны хувьтай пропорциональ */
