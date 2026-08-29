@@ -120,7 +120,8 @@ export function BenchRail() {
    мян.тн тул хэмжээгээр нь шууд харьцуулна.
    ========================================================================== */
 const BSERIES: { ci: number; c: string; nm: [string, string]; u: "kt" | "m3" }[] = [
-  { ci: C.NOOC, c: "var(--s3)", nm: ["Олборлосон нөөц", "Mined reserve"], u: "kt" },
+  /* Улаан — цуврал өнгө биш тогтмол утга, «Нийт хүдэр»-ээс тод ялгарна */
+  { ci: C.NOOC, c: "#e0483a", nm: ["Олборлосон нөөц", "Mined reserve"], u: "kt" },
   { ci: C.NIIT, c: "var(--s1)", nm: ["Нийт хүдэр", "Total ore"], u: "kt" },
 ];
 
