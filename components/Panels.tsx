@@ -105,8 +105,13 @@ export function BenchRail() {
             onMouseLeave={() => setTip(null)}
           >
             <span className="bwrap">
+              {/* Тоо нь баганын УРД ҮЗҮҮРТ. Өмнө нь баганын ДОТОР, суурь
+                  талд нь бичигдээд, 26 %-аас богино багана дээр огт
+                  харагддаггүй байв — жижиг түвшнүүд тоогүй үлддэг.
+                  Хамгийн урт баганууд дээр л гадна талд зай үлдэхгүй тул
+                  тэдгээрт нь үзүүрийн дотор талд оруулна. */}
               <i style={{ width: `${w.toFixed(1)}%`, ["--c" as any]: gradeColor(cu) }}>
-                {w > 26 && <b>{fmt(kt, 0)}</b>}
+                <b className={w > 86 ? "in" : ""}>{fmt(kt, 0)}</b>
               </i>
             </span>
             <span className="bl">{e}</span>

@@ -189,8 +189,11 @@ body.dragging *{pointer-events:none}
   border-radius:3px 0 0 3px;position:relative;
   background:color-mix(in srgb, var(--c) 42%, transparent);
   border:1px solid var(--c);border-right:none}
-.bwrap i b{position:absolute;right:5px;top:0;line-height:13px;
-  font:500 9px/13px "IBM Plex Mono",monospace;color:var(--ink);font-weight:600}
+/* Тоо нь баганын урд үзүүрийн ГАДНА талд — багана хэдий богино байсан ч
+   уншигдана. `.in` нь зай хүрэхгүй урт баганад зориулсан хувилбар. */
+.bwrap i b{position:absolute;right:100%;margin-right:5px;top:0;
+  font:600 9px/13px "IBM Plex Mono",monospace;color:var(--ink);white-space:nowrap}
+.bwrap i b.in{right:auto;left:5px;margin-right:0}
 .bl{font:400 10px/1.5 "IBM Plex Mono",monospace;color:var(--ink-2);text-align:left}
 
 /* Cu-гийн өнгөний богино шатлал — панелийн толгойд */
