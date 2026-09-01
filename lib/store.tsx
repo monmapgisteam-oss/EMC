@@ -44,8 +44,6 @@ interface Store {
   toggleDest: (d: { ci: number; title: string; featName: string }) => void;
   /** Бүх идэвхтэй шүүлтийг нэг дор цуцална (Esc товч ч үүнийг дуудна) */
   clearAll: () => void;
-  /** Ямар нэг шүүлт идэвхтэй эсэх */
-  hasFilter: boolean;
   /** Газрын зураг дангаараа дэлгэц дүүрэн эсэх */
   mapMax: boolean;
   setMapMax: (v: boolean) => void;
@@ -121,7 +119,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     () => ({
       m, setM, lang, setLang, sel, setSel, blk, setBlk, tip, setTip,
       toggleBench, toggleDest, clearAll,
-      hasFilter: sel !== null || blk !== null,
       mapMax, setMapMax,
       theme, setTheme,
       t: T[lang] as Dict,

@@ -395,42 +395,10 @@ const DEST_ROWS: { ci: number; nm: [string, string]; c: string }[] = [
   { ci: C.HOOSON, nm: ["Овоолго №1, 4, 11", "Piles 1, 4, 11"],  c: TRUCK_COLOR.waste },
 ];
 
-/* --------------------------------------------------------------------------
-   ИДЭВХТЭЙ ШҮҮЛТИЙН МӨР — ArcGIS Dashboard-ийн «selection banner» загвараар.
-   Өмнө нь зөвхөн ТҮВШНИЙ шүүлтийг харуулдаг байсан тул газрын зургаас
-   сонгосон феатурыг цуцлах нэг ч товч байхгүй, зөвхөн Esc товчоор
-   (мэдэхгүй бол огт) арилдаг байв. Одоо идэвхтэй шүүлт БҮР өөрийн ✕-тэй
-   чип болж гарах бөгөөд хажууд нь «бүгдийг цэвэрлэх» товч байна.
-   -------------------------------------------------------------------------- */
-export function FilterBar() {
-  const { sel, t, toggleBench, setSel, clearAll, hasFilter } = useStore();
-
-  const chips: { id: string; k: string; v: string; clear: () => void }[] = [];
-  if (sel?.kind === "bench")
-    chips.push({ id: "bench", k: t.filterOn, v: `${t.dBench} ${sel.tuv} м`,
-                 clear: () => toggleBench(sel.tuv) });
-  if (sel?.kind === "dest")
-    chips.push({ id: "dest", k: t.filterFeat, v: sel.title,
-                 clear: () => setSel(null) });
-
-  if (!hasFilter || !chips.length) return null;
-
-  return (
-    <div className="fbar" role="group" aria-label={t.filterOn} title={t.filterHint}>
-      {chips.map((c) => (
-        <span className="fchip" key={c.id}>
-          <span className="fk">{c.k}</span>
-          <b>{c.v}</b>
-          <button className="fcx" onClick={c.clear}
-                  title={t.filterOff} aria-label={`${t.filterOff} — ${c.v}`}>✕</button>
-        </span>
-      ))}
-      <span className="fsp" />
-      <kbd className="fkbd">Esc</kbd>
-      <button className="fx" onClick={clearAll} title={t.filterHint}>{t.filterAll}</button>
-    </div>
-  );
-}
+/* Идэвхтэй шүүлтийн банер ХАСАГДСАН: газрын зургийн дээр нэмэлт мөр
+   гарч, зургийн талбайг иддэг байв. Шүүлтийг цуцлах хоёр зам үлдсэн —
+   сонгосон элемент дээр ДАХИН дарах, эсвэл Esc. Сонголт нь чарт дээрээ
+   тодорч харагддаг тул банергүйгээр ч хаана шүүлт тавигдсан нь мэдэгдэнэ. */
 
 export function DestChart() {
   const { m, t, lang, sel, setTip } = useStore();

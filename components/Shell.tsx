@@ -4,7 +4,7 @@ import dynamic from "next/dynamic";
 import { useEffect, useRef, useState } from "react";
 import { useStore } from "@/lib/store";
 import { ROMAN, MON_L } from "@/lib/i18n";
-import { BenchLine, BenchRail, DestChart, DetailCard, FilterBar, GradeChart, Kpis, MetalChart,
+import { BenchLine, BenchRail, DestChart, DetailCard, GradeChart, Kpis, MetalChart,
          Timeline, Tooltip } from "./Panels";
 
 /* ArcGIS Maps SDK бол бүхэлдээ browser талын сан — SSR-ээс салгана.
@@ -154,7 +154,6 @@ export default function Shell() {
         <div className="split" onPointerDown={(e) => startDrag(e, "L")} />
 
         <div className="col">
-          <FilterBar />
           <Kpis />
           {/* `maxed` үед панел нь grid-ээс салж бүх цонхыг эзэлнэ.
               ArcGIS SceneView контейнерийнхээ хэмжээг ажигладаг тул

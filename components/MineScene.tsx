@@ -864,7 +864,12 @@ export default function MineScene() {
 
   /* --------------------------------------------------------- тусгаарлах */
   const prevVis = useRef<Record<string, boolean>>({});
-  const ISO = ["im", "roadNet", "dam", "bld", "pile2d", "pile3d"];
+  /* «Зөвхөн уурхай» үед ГАНЦХАН энэ давхарга үлдэнэ. Өмнө нь унтраах
+     давхаргууд гараар бичигдсэн жагсаалт байсан тул тэнд ороогүй машин,
+     хаягдлын урсгал, нэмсэн сервис асаалттай хэвээр үлдэж, «зөвхөн»
+     гэдэг нь худал болж байв. Одоо жагсаалтыг давхаргын бүртгэлээс
+     гаргаж авна — шинэ давхарга нэмэгдсэн ч мартагдахгүй. */
+  const ISO_KEEP = "pitMesh";
 
   function toggleIsolate() { applyIsolate(!isolated); }
 
@@ -875,7 +880,11 @@ export default function MineScene() {
 
     if (on) {
       prevVis.current = {};
-      ISO.forEach((k) => { if (L[k]) { prevVis.current[k] = L[k].visible; L[k].visible = false; } });
+      Object.keys(L).forEach((k) => {
+        if (k === ISO_KEEP || !L[k]) return;
+        prevVis.current[k] = L[k].visible;
+        L[k].visible = false;
+      });
       prevBasemap.current = map.basemap ?? null;
       map.basemap = null as any;
       map.ground.opacity = 0;
@@ -886,7 +895,10 @@ export default function MineScene() {
       (view.environment.lighting as any).directShadowsEnabled = true;
       (view.environment.lighting as any).date = new Date("2023-06-21T09:30:00+08:00");
     } else {
-      ISO.forEach((k) => { if (L[k]) L[k].visible = prevVis.current[k] ?? true; });
+      /* Унтраасан яг тэр давхаргуудыг өмнөх төлөвт нь буцаана */
+      Object.keys(prevVis.current).forEach((k) => {
+        if (L[k]) L[k].visible = prevVis.current[k];
+      });
       /* Хэрэглэгч галерейгээс сонгосон суурь зургийг сэргээнэ */
       map.basemap = prevBasemap.current ?? Basemap.fromId("satellite")!;
       map.ground.opacity = GROUND_OPACITY[groundStep];

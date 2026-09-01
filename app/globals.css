@@ -175,31 +175,6 @@ body.dragging *{pointer-events:none}
    панелийн доор том хоосон зай үлддэг байв. */
 .rail{min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:1px}
 
-/* ---------------- идэвхтэй шүүлт (ArcGIS Dashboard маягийн банер) ----------
-   Шүүлт БҮР өөрийн ✕-тэй чип. Баруун талд Esc сануулга ба «бүгдийг
-   цэвэрлэх» товч — гарах зам нь үргэлж нүдэн дээр байна. */
-.fbar{display:flex;align-items:center;gap:6px;flex-wrap:wrap;flex:none;
-  background:var(--ui-soft);border:1px solid var(--ui-soft);border-radius:var(--r);
-  padding:5px 6px 5px 8px}
-.fchip{display:inline-flex;align-items:center;gap:6px;
-  background:var(--surface);border:1px solid var(--line-soft);
-  border-radius:999px;padding:2px 3px 2px 9px}
-.fk{font:600 8.5px/1.4 "Golos Text",sans-serif;letter-spacing:.07em;
-  text-transform:uppercase;color:var(--ink-3)}
-.fchip b{font:500 12px/1.3 "IBM Plex Mono",monospace;color:var(--ui-ink)}
-/* Чип бүрийн өөрийн цуцлах товч */
-.fcx{width:18px;height:18px;border-radius:999px;color:var(--ink-3);
-  display:grid;place-items:center;font-size:10px;flex:none;transition:.12s}
-.fcx:hover{background:var(--ui);color:var(--on-ui)}
-.fsp{flex:1 1 auto}
-.fkbd{font:600 9px/1 "IBM Plex Mono",monospace;color:var(--ink-3);
-  border:1px solid var(--line);border-bottom-width:2px;border-radius:4px;
-  padding:3px 5px;background:var(--surface)}
-.fx{border-radius:6px;color:var(--ui-ink);padding:3px 9px;
-  font:600 10px/1.5 "Golos Text",sans-serif;border:1px solid transparent;transition:.12s}
-.fx:hover{background:var(--ui);border-color:var(--ui);color:var(--on-ui)}
-
-
 /* Түвшин тус бүрийн олборлолт — багана нь БАРУУН талын тэнхлэгээс
    ЗҮҮН тийш ургана, хаялбарын өндөр нь баруун талд бичигдэнэ. */
 .bench{display:grid;grid-template-columns:1fr 34px;gap:8px;align-items:center;
