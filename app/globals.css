@@ -65,18 +65,22 @@ body{margin:0;overflow:hidden;background:var(--ground);color:var(--ink);
    зурвас мэт дүүрч байв. Нарийн, дэвсгэргүй, зөвхөн хөдөлгүүр нь
    харагдана. Firefox нь `scrollbar-*`, WebKit нь `::-webkit-*` дэмждэг
    тул хоёуланг нь бичив. */
-.rail,.dtable,.dbody,.lbody{scrollbar-width:thin;scrollbar-color:var(--line) transparent}
+.rail,.dtable,.dbody,.lbody,.col.scroll{scrollbar-width:thin;scrollbar-color:var(--line) transparent}
 .rail::-webkit-scrollbar,
 .dtable::-webkit-scrollbar,
+.col.scroll::-webkit-scrollbar,
 .dbody::-webkit-scrollbar{width:6px;height:6px}
 .rail::-webkit-scrollbar-track,
 .dtable::-webkit-scrollbar-track,
+.col.scroll::-webkit-scrollbar-track,
 .dbody::-webkit-scrollbar-track{background:transparent}
 .rail::-webkit-scrollbar-thumb,
 .dtable::-webkit-scrollbar-thumb,
+.col.scroll::-webkit-scrollbar-thumb,
 .dbody::-webkit-scrollbar-thumb{background:var(--line);border-radius:99px}
 .rail:hover::-webkit-scrollbar-thumb,
 .dtable:hover::-webkit-scrollbar-thumb,
+.col.scroll:hover::-webkit-scrollbar-thumb,
 .dbody:hover::-webkit-scrollbar-thumb{background:var(--ink-3)}
 h1,h2,h3{margin:0;font-weight:600;letter-spacing:-.01em}
 button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
@@ -115,6 +119,8 @@ input{font:inherit}
 .ghost:hover{background:var(--sunken);color:var(--ink)}
 .ghost.sm{padding:4px 9px;font-size:11px}
 .ghost[aria-pressed="true"]{background:var(--ui-soft);border-color:var(--ui-soft);color:var(--ui-ink)}
+/* Зөвхөн тэмдэгтэй товч — текстгүй тул дөрвөлжин, тэмдэг нь томсоно */
+.ghost.ico{padding:0;width:24px;display:inline-grid;place-items:center;font-size:13px;line-height:1}
 
 /* ---------------- main grid ---------------- */
 /* Баганын өргөнийг Shell.tsx-ээс инлайнаар оноодог (чирж өөрчилнө);
@@ -128,6 +134,13 @@ input{font:inherit}
 body.dragging{cursor:col-resize;user-select:none}
 body.dragging *{pointer-events:none}
 .col{display:flex;flex-direction:column;gap:10px;min-height:0;min-width:0}
+/* ГҮЙЛГЭДЭГ БАГАНА. Намхан дэлгэц дээр багана дахь панелууд нийлээд
+   багтахгүй болоход `flex:1`-тэй хамгийн доод панел (түвшний карт) 0
+   хүртэл шахагдаж, огт уншигдахгүй үлддэг байв. Одоо багана бүхэлдээ
+   гүйлгэгдэж, ургадаг панел нь доод өндрөө хадгална. Өндөр дэлгэц дээр
+   `flex-grow` хэвээр тул харагдац нь урьдын адил үлдэнэ. */
+.col.scroll{overflow-y:auto;overflow-x:hidden;scrollbar-gutter:stable}
+.col.scroll > .panel.grow{flex:1 0 auto;min-height:var(--growmin,260px)}
 .panel{background:var(--surface);border:1px solid var(--line-soft);border-radius:var(--r);
   display:flex;flex-direction:column;min-height:0;min-width:0;overflow:hidden}
 .ph{display:flex;align-items:center;gap:8px;padding:7px 11px 6px;border-bottom:1px solid var(--line-soft);flex:none}
@@ -162,16 +175,30 @@ body.dragging *{pointer-events:none}
    панелийн доор том хоосон зай үлддэг байв. */
 .rail{min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:1px}
 
-/* Идэвхтэй шүүлт */
-.fbar{display:flex;align-items:center;gap:8px;flex:none;
+/* ---------------- идэвхтэй шүүлт (ArcGIS Dashboard маягийн банер) ----------
+   Шүүлт БҮР өөрийн ✕-тэй чип. Баруун талд Esc сануулга ба «бүгдийг
+   цэвэрлэх» товч — гарах зам нь үргэлж нүдэн дээр байна. */
+.fbar{display:flex;align-items:center;gap:6px;flex-wrap:wrap;flex:none;
   background:var(--ui-soft);border:1px solid var(--ui-soft);border-radius:var(--r);
-  padding:6px 8px 6px 10px}
+  padding:5px 6px 5px 8px}
+.fchip{display:inline-flex;align-items:center;gap:6px;
+  background:var(--surface);border:1px solid var(--line-soft);
+  border-radius:999px;padding:2px 3px 2px 9px}
 .fk{font:600 8.5px/1.4 "Golos Text",sans-serif;letter-spacing:.07em;
-  text-transform:uppercase;color:var(--ui-ink)}
-.fbar b{font:500 12px/1.3 "IBM Plex Mono",monospace;color:var(--ui-ink)}
-.fx{margin-left:auto;width:20px;height:20px;border-radius:5px;color:var(--ui-ink);
-  display:grid;place-items:center;font-size:11px}
-.fx:hover{background:var(--surface-2)}
+  text-transform:uppercase;color:var(--ink-3)}
+.fchip b{font:500 12px/1.3 "IBM Plex Mono",monospace;color:var(--ui-ink)}
+/* Чип бүрийн өөрийн цуцлах товч */
+.fcx{width:18px;height:18px;border-radius:999px;color:var(--ink-3);
+  display:grid;place-items:center;font-size:10px;flex:none;transition:.12s}
+.fcx:hover{background:var(--ui);color:var(--on-ui)}
+.fsp{flex:1 1 auto}
+.fkbd{font:600 9px/1 "IBM Plex Mono",monospace;color:var(--ink-3);
+  border:1px solid var(--line);border-bottom-width:2px;border-radius:4px;
+  padding:3px 5px;background:var(--surface)}
+.fx{border-radius:6px;color:var(--ui-ink);padding:3px 9px;
+  font:600 10px/1.5 "Golos Text",sans-serif;border:1px solid transparent;transition:.12s}
+.fx:hover{background:var(--ui);border-color:var(--ui);color:var(--on-ui)}
+
 
 /* Түвшин тус бүрийн олборлолт — багана нь БАРУУН талын тэнхлэгээс
    ЗҮҮН тийш ургана, хаялбарын өндөр нь баруун талд бичигдэнэ. */
@@ -217,6 +244,12 @@ body.dragging *{pointer-events:none}
 
 /* ---------------- map ---------------- */
 .panel.map{display:grid;grid-template-rows:auto minmax(0,1fr)}
+/* ЗӨВХӨН ГАЗРЫН ЗУРАГ — дэлгэц дүүрэн. Панел нь grid-ээс салж бүх
+   цонхыг эзэлнэ. Браузерын жинхэнэ Fullscreen API-г ЗОРИУД ашиглаагүй:
+   тэр үед элемент «top layer» руу гардаг тул апп-ын үндэст зурагддаг
+   #tip (z-index 50) далд үлдэж, газрын зургийн бүх мэдээлэл алга болно.
+   z-index нь дрор (41)-оос дээш, #tip-ээс ДООШ байх ёстой. */
+.panel.map.maxed{position:fixed;inset:0;z-index:45;border-radius:0;border:none}
 /* Газрын зургийн панел flex биш GRID — SceneView нь эцсийн өндрийг
    тодорхой мэдэж байж canvas-аа зөв хэмжээгээр үүсгэдэг. flex дээр
    зураг панелаа дүүргэхгүй богино үлдэж байсан. */
@@ -336,6 +369,10 @@ body.isolated .gradekey{background:rgba(11,17,23,.92);border-color:#263441;color
 .dpct{font:400 9.5px/1.4 "IBM Plex Mono",monospace;color:var(--ink-3);text-align:right}
 .drow2.tot{margin-top:3px;padding-top:5px;border-top:1px solid var(--line-soft)}
 .drow2.tot .dlab2{color:var(--ink-3)}
+/* Сонгогдсон хүлээн авагчийг чиглэлийн чарт дээр тодруулна. `:hover`-ээс
+   ХОЙНО бичив — эс тэгвэл ижил жинтэй тул дүүжлэх өнгө нь дарж орхино. */
+.drow2.on{background:var(--ui-soft);border-radius:5px}
+.drow2.on .dlab2{color:var(--ui-ink);font-weight:600}
 
 /* Дэлгэрэнгүй картын бүлгийн гарчиг */
 .dsec th{position:sticky;top:0;background:var(--surface);
@@ -343,6 +380,21 @@ body.isolated .gradekey{background:rgba(11,17,23,.92);border-color:#263441;color
   color:var(--ink-3);text-align:left;padding:7px 4px 3px;border-bottom:1px solid var(--line-soft)}
 .dsec th.mono{text-align:right;font-family:"IBM Plex Mono",monospace;letter-spacing:0;text-transform:none}
 .dsec:first-child th{padding-top:0}
+/* Эвхэгддэг бүлгийн гарчиг — бүхэлдээ товч, дарахад төрөл нуугдана */
+.sech{display:inline-flex;align-items:center;gap:5px;font:inherit;color:inherit;
+  letter-spacing:inherit;text-transform:inherit;padding:2px 5px 2px 3px;
+  border-radius:5px;margin:-2px 0 -2px -3px;transition:.12s}
+.sech:hover{background:var(--sunken);color:var(--ink-2)}
+.sech .chev{font-size:8px;width:8px;color:var(--ink-3);line-height:1}
+.sech em{font-style:normal;font-size:8.5px;background:var(--sunken);color:var(--ink-3);
+  border-radius:99px;padding:1px 5px;letter-spacing:0}
+.dsec.off th{border-bottom-color:transparent}
+.dsec.off .sech{color:var(--ink-3)}
+/* «Бүх бүлгийг харуулах» — блокийн чипсийн мөрөнд */
+.secall{margin-left:auto;padding:3px 9px;border-radius:6px;
+  border:1px solid var(--ui-soft);background:var(--ui-soft);color:var(--ui-ink);
+  font:600 10px/1.5 "Golos Text",sans-serif}
+.secall:hover{background:var(--ui);border-color:var(--ui);color:var(--on-ui)}
 
 /* ---------------- detail card ---------------- */
 .joinbar{display:flex;align-items:center;gap:5px;flex-wrap:wrap;flex:none;margin-bottom:8px}

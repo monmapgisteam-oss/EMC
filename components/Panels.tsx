@@ -63,7 +63,7 @@ export function Kpis() {
 
 /* ------------------------------------------------------- түвшний рейл */
 export function BenchRail() {
-  const { m, t, lang, sel, setSel, setBlk, setTip } = useStore();
+  const { m, t, lang, sel, toggleBench, setTip } = useStore();
   /* Зөвхөн тухайн сард ХӨДӨЛГӨӨНТЭЙ түвшин. Мэдээлэлгүй хаялбарыг бүдэг
      шошготой үлдээж үзсэн боловч жагсаалтын талыг эзэлж, утгатай мөрүүд
      доош түлхэгдэж байв. Багана нь баруун талын тэнхлэгээс ЗҮҮН тийш
@@ -78,16 +78,21 @@ export function BenchRail() {
         const kt = sumCol(m, C.NIIT, e);
         const cu = cuOf(m, e);
         const w = (kt / mx) * 100;
+        /* Сонгогдсон мөр дээр ДАХИН дарахад шүүлт цуцлагдана — зөвлөмжийг
+           tooltip-ийн доод мөрөнд шууд бичиж өгнө. */
+        const on = sel?.kind === "bench" && sel.tuv === e;
         return (
           <button
             key={e}
             className="bench"
-            aria-pressed={sel?.kind === "bench" && sel.tuv === e}
-            onClick={() => { setSel({ kind: "bench", tuv: e }); setBlk(null); }}
+            aria-pressed={on}
+            title={on ? t.filterOff : undefined}
+            onClick={() => toggleBench(e)}
             onMouseEnter={(ev) =>
               setTip({
                 x: ev.clientX, y: ev.clientY,
                 title: `${t.dBench} ${e} м`, key: `${m} | ${e}`,
+                hint: on ? t.filterAgain : undefined,
                 rows: [
                   { label: COL_NAMES[lang][C.NIIT], value: `${fmt(kt, 0)} ${t.uKt}`, color: gradeColor(cu) },
                   { label: t.tCu, value: `${cu.toFixed(3)} %` },
@@ -125,6 +130,31 @@ const BSERIES: { ci: number; c: string; nm: [string, string]; u: "kt" | "m3" }[]
   { ci: C.NIIT, c: "var(--s1)", nm: ["Нийт хүдэр", "Total ore"], u: "kt" },
 ];
 
+/* Catmull-Rom сплайныг куб Безье болгож, шулуун холбоосыг гөлгөр муруй
+   болгоно. Хяналтын цэгийн Y-г хөрш ХОЁР цэгийн хооронд хязгаарлав:
+   энгийн Catmull-Rom нь өгөгдөлд БАЙХГҮЙ оргил, хотгор үүсгэдэг — нөөцийн
+   утга 0 хүртэл унасан газар муруй нь тэнхлэгээс доош гарч, байхгүй
+   сөрөг утга харуулж мэдэх юм. */
+function smoothPath(pts: [number, number][]): string {
+  if (pts.length < 2) return "";
+  const clamp = (v: number, a: number, b: number) =>
+    Math.max(Math.min(a, b), Math.min(Math.max(a, b), v));
+  let d = `M${pts[0][0].toFixed(2)},${pts[0][1].toFixed(2)}`;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[i - 1] ?? pts[i];
+    const p1 = pts[i], p2 = pts[i + 1];
+    const p3 = pts[i + 2] ?? p2;
+    const c1x = p1[0] + (p2[0] - p0[0]) / 6;
+    const c2x = p2[0] - (p3[0] - p1[0]) / 6;
+    const c1y = clamp(p1[1] + (p2[1] - p0[1]) / 6, p1[1], p2[1]);
+    const c2y = clamp(p2[1] - (p3[1] - p1[1]) / 6, p1[1], p2[1]);
+    d += ` C${c1x.toFixed(2)},${c1y.toFixed(2)}`
+       + ` ${c2x.toFixed(2)},${c2y.toFixed(2)}`
+       + ` ${p2[0].toFixed(2)},${p2[1].toFixed(2)}`;
+  }
+  return d;
+}
+
 export function BenchLine() {
   const { m, t, lang, setTip } = useStore();
   const li = lang === "mn" ? 0 : 1;
@@ -155,8 +185,9 @@ export function BenchLine() {
           </g>
         ))}
         {BSERIES.map((s2, k) => (
-          <polyline key={k} fill="none" stroke={s2.c} strokeWidth={1.6}
-                    points={act.map((e, i) => `${x(i)},${y(vals[k][i])}`).join(" ")} />
+          <path key={k} fill="none" stroke={s2.c} strokeWidth={1.6}
+                strokeLinecap="round" strokeLinejoin="round"
+                d={smoothPath(act.map((e, i) => [x(i), y(vals[k][i])] as [number, number]))} />
         ))}
         {BSERIES.map((s2, k) => act.map((e, i) => (
           <circle key={`${k}-${e}`} cx={x(i)} cy={y(vals[k][i])} r={2} fill={s2.c} />
@@ -187,6 +218,12 @@ export function BenchLine() {
 /* --------------------------------------------------- дэлгэрэнгүй карт */
 export function DetailCard() {
   const { m, t, lang, sel, blk, setBlk } = useStore();
+  /* Эвхэгдсэн бүлгүүд. Түлхүүр нь SECTIONS-ийн `key` — нэг төрөл хоёр
+     бүлэгт хуваагдсан байж болох тул (Бохирдол: мян.тн ба %) хамт
+     эвхэгдэнэ. Хук нь эрт `return`-үүдээс ӨМНӨ байх ёстой. */
+  const [hid, setHid] = useState<Record<string, boolean>>({});
+  const toggleSec = (k: string) => setHid((p) => ({ ...p, [k]: !p[k] }));
+  const anyHid = Object.values(hid).some(Boolean);
 
   if (!sel) {
     return (
@@ -212,6 +249,12 @@ export function DetailCard() {
                 {b === "БҮ" ? "БҮ" : "№" + b}
               </button>
             ))}
+            {/* Эвхсэн бүлгийг сэргээх зам үргэлж нүдэн дээр байна */}
+            {anyHid && (
+              <button className="secall" onClick={() => setHid({})} title={t.secAll}>
+                {t.secAll}
+              </button>
+            )}
           </div>
           <div className="dtable">
             {!rows.length || !g ? (
@@ -224,32 +267,57 @@ export function DetailCard() {
                  нэг л удаа бичигдэнэ. */
               <table>
                 <tbody>
-                  {SECTIONS.map((sec, si) => {
-                    const has = sec.cols.filter((i) => rows.includes(i));
-                    if (!has.length) return null;
-                    return (
-                      <Fragment key={si}>
-                        <tr className="dsec">
-                          <th>{t[sec.key]}</th>
-                          <th className="mono">
-                            {sec.unit === "pct" ? t.uPct : sec.unit === "m3" ? t.uM3 : t.uKt}
-                          </th>
-                          <th className="mono">{t.thCu}</th>
-                          <th className="mono">{t.thMo}</th>
-                        </tr>
-                        {has.map((i) => (
-                          <tr key={i}>
-                            <td>{COL_NAMES[lang][i]}</td>
-                            <td className="mono">{fmt(g.kt[i], sec.unit === "pct" ? 2 : 1)}</td>
-                            <td className={"mono" + (g.cu[i] ? "" : " zero")}>
-                              {g.cu[i] ? g.cu[i].toFixed(3) : "—"}</td>
-                            <td className={"mono" + (g.mo[i] ? "" : " zero")}>
-                              {g.mo[i] ? g.mo[i].toFixed(4) : "—"}</td>
+                  {(() => {
+                    /* Утга бүхий бүлгүүд ба төрөл тус бүрийн мөрийн тоо.
+                       Эвхэгдсэн үед нэг төрлийн ХОЁР бүлэг (Бохирдол ·
+                       мян.тн ба Бохирдол · %) хоёр ижил гарчиг болж
+                       давхарлахгүйн тулд эхнийхийг нь л үлдээж, нийт
+                       мөрийн тоог хажууд нь бичнэ. */
+                    const vis = SECTIONS
+                      .map((sec) => ({ sec, has: sec.cols.filter((i) => rows.includes(i)) }))
+                      .filter((o) => o.has.length);
+                    const cnt: Record<string, number> = {};
+                    vis.forEach((o) => { cnt[o.sec.key] = (cnt[o.sec.key] ?? 0) + o.has.length; });
+                    const seen = new Set<string>();
+
+                    return vis.map(({ sec, has }, si) => {
+                      const off = !!hid[sec.key];
+                      if (off) {
+                        if (seen.has(sec.key)) return null;
+                        seen.add(sec.key);
+                      }
+                      return (
+                        <Fragment key={si}>
+                          <tr className={"dsec" + (off ? " off" : "")}>
+                            <th>
+                              <button className="sech" aria-expanded={!off}
+                                      onClick={() => toggleSec(sec.key)}
+                                      title={off ? t.secShow : t.secHide}>
+                                <span className="chev">{off ? "▸" : "▾"}</span>
+                                {t[sec.key]}
+                                {off && <em>{cnt[sec.key]}</em>}
+                              </button>
+                            </th>
+                            <th className="mono">
+                              {off ? "" : sec.unit === "pct" ? t.uPct : sec.unit === "m3" ? t.uM3 : t.uKt}
+                            </th>
+                            <th className="mono">{off ? "" : t.thCu}</th>
+                            <th className="mono">{off ? "" : t.thMo}</th>
                           </tr>
-                        ))}
-                      </Fragment>
-                    );
-                  })}
+                          {!off && has.map((i) => (
+                            <tr key={i}>
+                              <td>{COL_NAMES[lang][i]}</td>
+                              <td className="mono">{fmt(g.kt[i], sec.unit === "pct" ? 2 : 1)}</td>
+                              <td className={"mono" + (g.cu[i] ? "" : " zero")}>
+                                {g.cu[i] ? g.cu[i].toFixed(3) : "—"}</td>
+                              <td className={"mono" + (g.mo[i] ? "" : " zero")}>
+                                {g.mo[i] ? g.mo[i].toFixed(4) : "—"}</td>
+                            </tr>
+                          ))}
+                        </Fragment>
+                      );
+                    });
+                  })()}
                 </tbody>
               </table>
             )}
@@ -327,22 +395,45 @@ const DEST_ROWS: { ci: number; nm: [string, string]; c: string }[] = [
   { ci: C.HOOSON, nm: ["Овоолго №1, 4, 11", "Piles 1, 4, 11"],  c: TRUCK_COLOR.waste },
 ];
 
-/** Идэвхтэй шүүлтийг харуулж, цуцлах мөр */
+/* --------------------------------------------------------------------------
+   ИДЭВХТЭЙ ШҮҮЛТИЙН МӨР — ArcGIS Dashboard-ийн «selection banner» загвараар.
+   Өмнө нь зөвхөн ТҮВШНИЙ шүүлтийг харуулдаг байсан тул газрын зургаас
+   сонгосон феатурыг цуцлах нэг ч товч байхгүй, зөвхөн Esc товчоор
+   (мэдэхгүй бол огт) арилдаг байв. Одоо идэвхтэй шүүлт БҮР өөрийн ✕-тэй
+   чип болж гарах бөгөөд хажууд нь «бүгдийг цэвэрлэх» товч байна.
+   -------------------------------------------------------------------------- */
 export function FilterBar() {
-  const { sel, setSel, setBlk, t } = useStore();
-  if (sel?.kind !== "bench") return null;
+  const { sel, t, toggleBench, setSel, clearAll, hasFilter } = useStore();
+
+  const chips: { id: string; k: string; v: string; clear: () => void }[] = [];
+  if (sel?.kind === "bench")
+    chips.push({ id: "bench", k: t.filterOn, v: `${t.dBench} ${sel.tuv} м`,
+                 clear: () => toggleBench(sel.tuv) });
+  if (sel?.kind === "dest")
+    chips.push({ id: "dest", k: t.filterFeat, v: sel.title,
+                 clear: () => setSel(null) });
+
+  if (!hasFilter || !chips.length) return null;
+
   return (
-    <div className="fbar">
-      <span className="fk">{t.filterOn}</span>
-      <b>{t.dBench} {sel.tuv} м</b>
-      <button className="fx" onClick={() => { setSel(null); setBlk(null); }}
-              title={t.filterOff}>✕</button>
+    <div className="fbar" role="group" aria-label={t.filterOn} title={t.filterHint}>
+      {chips.map((c) => (
+        <span className="fchip" key={c.id}>
+          <span className="fk">{c.k}</span>
+          <b>{c.v}</b>
+          <button className="fcx" onClick={c.clear}
+                  title={t.filterOff} aria-label={`${t.filterOff} — ${c.v}`}>✕</button>
+        </span>
+      ))}
+      <span className="fsp" />
+      <kbd className="fkbd">Esc</kbd>
+      <button className="fx" onClick={clearAll} title={t.filterHint}>{t.filterAll}</button>
     </div>
   );
 }
 
 export function DestChart() {
-  const { m, t, lang, setTip } = useStore();
+  const { m, t, lang, sel, setTip } = useStore();
   const tuv = useTuv();
   const li = lang === "mn" ? 0 : 1;
   const rows = DEST_ROWS.map((d) => ({ ...d, v: sumCol(m, d.ci, tuv) }));
@@ -352,7 +443,10 @@ export function DestChart() {
   return (
     <div className="dchart">
       {rows.map((r) => (
-        <div className="drow2" key={r.ci}
+        /* Газрын зургаас сонгосон хүлээн авагч энд тодрох — сонголт хаана
+           тавигдсаныг чарт дээрээс шууд уншина. */
+        <div className={"drow2" + (sel?.kind === "dest" && sel.ci === r.ci ? " on" : "")}
+             key={r.ci}
              onMouseEnter={(ev) => setTip({
                x: ev.clientX, y: ev.clientY, title: r.nm[li],
                rows: [
@@ -516,14 +610,19 @@ function AreaPair({
     const W = 150, H = 54, PB = 10, PT = 8;
     const x = (i: number) => (i / (rows.length - 1)) * W;
     const y = (t2: number) => PT + (1 - (t2 - y0) / (y1 - y0)) * (H - PT - PB);
-    const line = rows.map((r, i) => `${x(i)},${y(v[i])}`).join(" ");
-    const area = `0,${H - PB} ${line} ${W},${H - PB}`;
+    /* Гөлгөр муруй — түвшний чарттай ижил `smoothPath`. Талбай нь мөн
+       ТЭР МУРУЙГ дагана: шугам гөлгөр, дүүргэлт нь өнцөгтэй үлдвэл хоёр
+       нь салж, доод захаараа цагаан зай үүсгэнэ. */
+    const pts = rows.map((r, i) => [x(i), y(v[i])] as [number, number]);
+    const line = smoothPath(pts);
+    const area = `${line} L${W},${H - PB} L0,${H - PB} Z`;
     return (
       <div className="acell">
         <div className="ahead" style={{ color }}>{label}</div>
         <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="asvg">
-          <polygon points={area} fill={color} opacity={0.18} />
-          <polyline points={line} fill="none" stroke={color} strokeWidth={1.6} />
+          <path d={area} fill={color} opacity={0.18} />
+          <path d={line} fill="none" stroke={color} strokeWidth={1.6}
+                strokeLinecap="round" strokeLinejoin="round" />
           {rows.map((r, i) => <circle key={r.key} cx={x(i)} cy={y(v[i])} r={1.8} fill={color} />)}
           {rows.map((r, i) => (
             <rect key={"h" + r.key} x={x(i) - W / (rows.length * 2)} y={0}

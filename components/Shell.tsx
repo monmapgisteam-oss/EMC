@@ -27,7 +27,8 @@ const MineScene = dynamic(() => import("./MineScene"), {
 });
 
 export default function Shell() {
-  const { m, setM, lang, setLang, t, setSel, theme, setTheme } = useStore();
+  const { m, setM, lang, setLang, t, clearAll, theme, setTheme,
+          mapMax, setMapMax } = useStore();
 
   /* Хажуугийн баганын өргөн — чирж өөрчилнө. Сонголт нь localStorage-д
      хадгалагдана. Дундах багана (газрын зураг) үлдсэн зайг эзэлнэ. */
@@ -70,13 +71,18 @@ export default function Shell() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setSel(null);
+      /* Esc: эхлээд дэлгэц дүүрэн горимоос гарна, дараа нь шүүлт цуцална —
+         хоёуланг нь нэг дарахад хийвэл газрын зургаас гарангуутаа
+         сонголтоо ч алдчихдаг байх байв. */
+      if (e.key === "Escape") {
+        if (mapMax) setMapMax(false); else clearAll();
+      }
       if (e.key === "ArrowLeft" && m > 1) setM(m - 1);
       if (e.key === "ArrowRight" && m < 6) setM(m + 1);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [m, setM, setSel]);
+  }, [m, setM, clearAll, mapMax, setMapMax]);
 
 
   return (
@@ -150,14 +156,19 @@ export default function Shell() {
         <div className="col">
           <FilterBar />
           <Kpis />
-          <div className="panel map" style={{ flex: 1 }}>
+          {/* `maxed` үед панел нь grid-ээс салж бүх цонхыг эзэлнэ.
+              ArcGIS SceneView контейнерийнхээ хэмжээг ажигладаг тул
+              гараар resize дуудах шаардлагагүй. */}
+          <div className={"panel map" + (mapMax ? " maxed" : "")} style={{ flex: 1 }}>
             <MineScene />
           </div>
         </div>
 
         <div className="split" onPointerDown={(e) => startDrag(e, "R")} />
 
-        <div className="col">
+        {/* Баруун багана нь багтахгүй болоход бүхэлдээ гүйлгэгдэнэ —
+            эс тэгвэл доод талын түвшний карт шахагдаж алга болдог. */}
+        <div className="col scroll">
           <div className="panel" style={{ flex: "none" }}>
             <div className="ph"><h2>{t.tlTitle}</h2></div>
             <div className="pb tight"><Timeline /></div>
@@ -166,7 +177,7 @@ export default function Shell() {
             <div className="ph"><h2>{t.chDest}</h2></div>
             <div className="pb tight"><DestChart /></div>
           </div>
-          <div className="panel" style={{ flex: 1 }}>
+          <div className="panel grow">
             <div className="ph">
               <DetailCardTitle />
             </div>

@@ -38,6 +38,17 @@ interface Store {
   setSel: (s: Selection) => void;
   blk: string | null;
   setBlk: (b: string | null) => void;
+  /* ArcGIS Dashboard-ийн зарчим: сонгогдсон элемент дээр ДАХИН дарахад
+     шүүлт цуцлагдана. Тиймээс бүх шүүлтийн эх сурвалж «toggle» хэлбэртэй. */
+  toggleBench: (tuv: number) => void;
+  toggleDest: (d: { ci: number; title: string; featName: string }) => void;
+  /** Бүх идэвхтэй шүүлтийг нэг дор цуцална (Esc товч ч үүнийг дуудна) */
+  clearAll: () => void;
+  /** Ямар нэг шүүлт идэвхтэй эсэх */
+  hasFilter: boolean;
+  /** Газрын зураг дангаараа дэлгэц дүүрэн эсэх */
+  mapMax: boolean;
+  setMapMax: (v: boolean) => void;
   tip: TipState | null;
   setTip: Dispatch<SetStateAction<TipState | null>>;
   t: Dict;
@@ -52,6 +63,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [blk, setBlk] = useState<string | null>(null);
   const [tip, setTip] = useState<TipState | null>(null);
   const [theme, setTheme] = useState<Theme>("auto");
+  const [mapMax, setMapMax] = useState(false);
 
   /* Хадгалсан сонголтыг сэргээнэ. Серверийн рендэрт localStorage
      байхгүй тул зөвхөн монтлогдсоны дараа уншина. */
@@ -81,13 +93,40 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setBlk(null);
   };
 
+  /* ---------------------------------------------------------- шүүлтүүд
+     Дахин дарахад цуцлагдах зарчмыг НЭГ газарт төвлөрүүлэв: рейл,
+     газрын зураг, блокийн чипс гурвуулаа эдгээрийг дуудна. Ингэснээр
+     «хаанаас тавьсан бол тэндээсээ л авах» гэсэн байдал арилна. */
+  const toggleBench = (tuv: number) => {
+    setSel((prev) => (prev?.kind === "bench" && prev.tuv === tuv
+      ? null
+      : { kind: "bench", tuv }));
+    /* Түвшин солигдох ч, цуцлагдах ч блокийн шүүлт утгагүй болно */
+    setBlk(null);
+  };
+
+  const toggleDest = (d: { ci: number; title: string; featName: string }) => {
+    setSel((prev) => (prev?.kind === "dest" && prev.ci === d.ci
+      ? null
+      : { kind: "dest", ...d }));
+    setBlk(null);
+  };
+
+  const clearAll = () => {
+    setSel(null);
+    setBlk(null);
+  };
+
   const value = useMemo<Store>(
     () => ({
       m, setM, lang, setLang, sel, setSel, blk, setBlk, tip, setTip,
+      toggleBench, toggleDest, clearAll,
+      hasFilter: sel !== null || blk !== null,
+      mapMax, setMapMax,
       theme, setTheme,
       t: T[lang] as Dict,
     }),
-    [m, lang, sel, blk, tip, theme],
+    [m, lang, sel, blk, tip, theme, mapMax],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

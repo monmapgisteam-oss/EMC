@@ -90,7 +90,7 @@ function waitStableSize(el: HTMLElement, timeoutMs = 2000): Promise<void> {
 
 export default function MineScene() {
   const store = useStore();
-  const { m, lang, t, setSel, setBlk, setTip } = store;
+  const { m, lang, t, toggleDest, clearAll, setTip, mapMax, setMapMax } = store;
 
   const divRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<SceneView | null>(null);
@@ -777,22 +777,24 @@ export default function MineScene() {
 
     view.on("click", async (ev) => {
       const h = hitInfo(await view.hitTest(ev));
-      if (!h) return;
+      /* ArcGIS Dashboard шиг: ХООСОН зай дээр дарахад сонголт цуцлагдана.
+         Урьд нь газрын зургаас тавьсан шүүлтийг зөвхөн Esc товч арилгадаг
+         байсан тул хэрэглэгч гацдаг байв. */
+      if (!h) { clearAll(); return; }
       if (h.kind === "pitmesh") { toggleIsolate(); return; }
       if (h.kind === "bld") {
         const rec = await bldLookup(h.mapPoint);
         if (rec && num1(rec.type1) === BU_TYPE) {
-          setSel({ kind: "dest", ci: C.BU, title: t.bu,
-                   featName: "type1 = 1" + (rec.ner ? "  ·  " + rec.ner : "") });
-          setBlk(null);
+          /* Мөн адил феатур дээр дахин дарвал цуцлагдана */
+          toggleDest({ ci: C.BU, title: t.bu,
+                       featName: "type1 = 1" + (rec.ner ? "  ·  " + rec.ner : "") });
         }
         return;
       }
       if (h.kind === "pile") {
         const ci = PILE2COL[h.name];
         if (ci === undefined) return;
-        setSel({ kind: "dest", ci, title: h.name, featName: "RefName = " + h.name });
-        setBlk(null);
+        toggleDest({ ci, title: h.name, featName: "RefName = " + h.name });
       }
     });
   }
@@ -962,6 +964,13 @@ export default function MineScene() {
                 style={{ marginLeft: "auto" }}>{t.btnIso}</button>
         <button className="ghost sm" aria-pressed={layersOpen}
                 onClick={() => setLayersOpen((v) => !v)}>{t.btnLayers}</button>
+        {/* Зөвхөн газрын зургийг дэлгэц дүүрэн. Esc-ээр буцна. */}
+        <button className="ghost sm ico" aria-pressed={mapMax}
+                onClick={() => setMapMax(!mapMax)}
+                title={(mapMax ? t.btnFullOff : t.btnFull) + " · " + t.btnFullHint}
+                aria-label={mapMax ? t.btnFullOff : t.btnFull}>
+          {mapMax ? "⤡" : "⤢"}
+        </button>
       </div>
 
       <div className="mapwrap">
