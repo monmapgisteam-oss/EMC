@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic";
 import { useEffect, useRef, useState } from "react";
 import { useStore } from "@/lib/store";
+import { MON_L, ROMAN } from "@/lib/i18n";
 import { BenchLine, BenchRail, DestChart, DetailCard, ElementPanel, Kpis,
          Timeline, Tooltip } from "./Panels";
 
@@ -102,6 +103,12 @@ export default function Shell() {
 
         <div className="hspacer" />
 
+        {/* Сарын шүүлт — ArcGIS Dashboards-ийн толгойн сонгогч шиг доош
+            нээгддэг жагсаалт. Бүх KPI, чарт, газрын зураг энэ сараар
+            шинэчлэгдэнэ; ← / → товчоор ч солигдоно. */}
+        <MonthSelect label={t.lMonth} value={m} onChange={setM}
+                     options={MON_L[lang].map((n, i) => ({ v: i + 1, n, k: ROMAN[i] }))} />
+
         {/* Ганц товч — шилжих горимынхоо дүрсийг харуулна:
             харанхуйд нар (→ өдөр), цайварт сар (→ шөнө) */}
         <button className="themebtn" onClick={() => setTheme(isDark ? "light" : "dark")}
@@ -183,6 +190,55 @@ export default function Shell() {
       </div>
 
       <Tooltip />
+    </div>
+  );
+}
+
+/** ArcGIS Dashboards-ийн толгойн «category selector» — товч дээр шошго ба
+ *  сонгосон утга, дарахад доор нь радио жагсаалт. Гадна дарах, Esc-ээр хаагдана. */
+function MonthSelect({ label, value, options, onChange }: {
+  label: string; value: number;
+  options: { v: number; n: string; k: string }[];
+  onChange: (v: number) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const away = (e: PointerEvent) => { if (!ref.current?.contains(e.target as Node)) setOpen(false); };
+    const esc = (e: KeyboardEvent) => {
+      if (e.key === "Escape") { e.stopPropagation(); setOpen(false); }
+    };
+    window.addEventListener("pointerdown", away);
+    window.addEventListener("keydown", esc, true);
+    return () => { window.removeEventListener("pointerdown", away); window.removeEventListener("keydown", esc, true); };
+  }, [open]);
+  const cur = options.find((o) => o.v === value);
+  return (
+    <div className="dsel" ref={ref}>
+      <button className="dsel-btn" aria-haspopup="listbox" aria-expanded={open}
+              onClick={() => setOpen((o) => !o)}>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"
+             strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="M4 5h16l-6 7.5V19l-4 1.5v-8z" />
+        </svg>
+        <span className="dsel-l">{label}</span>
+        <b>{cur?.n ?? "—"}</b>
+        <svg className="dsel-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+             strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
+      </button>
+      {open && (
+        <ul className="dsel-pop" role="listbox" aria-label={label}>
+          {options.map((o) => (
+            <li key={o.v} role="option" aria-selected={o.v === value}
+                onClick={() => { onChange(o.v); setOpen(false); }}>
+              <i aria-hidden="true" />
+              <span>{o.n}</span>
+              <small>{o.k}</small>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

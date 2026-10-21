@@ -34,6 +34,7 @@ import { executeForIds, executeQueryJSON } from "@arcgis/core/rest/query";
 import esriConfig from "@arcgis/core/config";
 
 import { useStore } from "@/lib/store";
+import { MON_L } from "@/lib/i18n";
 import {
   SVC, C, COL_NAMES, ELEV_URL, GROUND_OPACITY, GROUND_NM,
   BU_TYPE, BLD_COLOR, PILE_COLOR, PILE_HEX, PILE_EDGE, PILE_EDGE_HEX,
@@ -50,7 +51,7 @@ import {
   BLOCK_TEXT, NO_SLICE, blockAt, buildBlockMesh, loadBlockData,
   type BlockData, type BlockModelMeta, type BlockSlice,
 } from "@/lib/blockModel";
-import { pitColors, type PitColors } from "@/lib/pitSurface";
+import { MONTH_COLORS, paintMonths, pitColors, type PitColors } from "@/lib/pitSurface";
 import { compileHazardZones, hazardLevelAt, type HazardIndex } from "@/lib/hazards";
 import { createHazardAlerts, type HazardAlerts } from "@/lib/hazardAlerts";
 import { buildTruckTelemetry, type TruckTelemetry, type TerrainElevationSample } from "@/lib/truckTelemetry";
@@ -138,6 +139,9 @@ export default function MineScene() {
   const meshLoad = useRef<Record<number, Promise<Mesh | null>>>({});
   /* Сарын гадаргуугийн өнгө (байгалийн + өөрчлөлт) — нэг удаа тооцно */
   const pitColorCache = useRef<Record<number, PitColors>>({});
+  /* «Нийт» горим: сар бүрийн өөрчлөлтийн маск ба тэдгээрээр будсан өнгө */
+  const allMasks = useRef<Promise<{ month: number; mask: Set<number> }[]> | null>(null);
+  const pitAllCache = useRef<Record<number, Uint8Array>>({});
   /* Сар бүрийн мэш дээр наасан замын геометр (тооцоо удаан тул нэг удаа) */
   const roadIsoCache = useRef<Record<number, Promise<Polyline[]>>>({});
   const heightGridCache = useRef<Record<number, Promise<HeightSampler | null>>>({});
@@ -173,8 +177,10 @@ export default function MineScene() {
   const [blkPeriod, setBlkPeriod] = useState<number | null>(null);
   const [blkSlice, setBlkSlice] = useState<BlockSlice>(NO_SLICE);
   /* Өмнөх сараас өөрчлөгдсөн гадаргууг улаанаар харуулах эсэх */
-  const [pitChange, setPitChange] = useState(true);
+  /* Гадаргуугийн өөрчлөлт: унтраалттай / өмнөх сараас / бүх сарын нийт */
+  const [pitChange, setPitChange] = useState<"off" | "month" | "all">("month");
   const [changeHa, setChangeHa] = useState<number | null>(null);
+  const [allChg, setAllChg] = useState<{ total: number; byMonth: Record<number, number> } | null>(null);
   const blkRef = useRef({ period: blkPeriod, slice: blkSlice, change: pitChange });
   blkRef.current = { period: blkPeriod, slice: blkSlice, change: pitChange };
   const [layersOpen, setLayersOpen] = useState(false);
@@ -1091,15 +1097,48 @@ export default function MineScene() {
 
   /** Сарын гадаргууг байгалийн өнгөөр, асаалттай бол өмнөх сараас
    *  өөрчлөгдсөн хэсгийг улаанаар будна (lib/pitSurface.ts). */
+  async function pitColorsFor(month: number): Promise<PitColors | null> {
+    const mesh = await loadPitMesh(month);
+    if (!mesh) return null;
+    if (!pitColorCache.current[month]) {
+      const prev = month > 1 ? await loadPitMesh(month - 1) : null;
+      pitColorCache.current[month] ??= pitColors(mesh, prev);
+    }
+    return pitColorCache.current[month];
+  }
+
+  /** II…VI сарын өөрчлөлтийн маскууд — нэг удаа тооцоод нийт талбайг гаргана */
+  function loadAllMasks() {
+    return allMasks.current ??= (async () => {
+      const out: { month: number; mask: Set<number> }[] = [];
+      const byMonth: Record<number, number> = {};
+      const union = new Set<number>();
+      let cell = 5;
+      const months = Object.keys(meshInfo.current).map(Number).filter((k) => k > 1).sort((a, b) => a - b);
+      for (const k of months) {
+        const pc = await pitColorsFor(k);
+        if (!pc?.mask) continue;
+        out.push({ month: k, mask: pc.mask });
+        byMonth[k] = pc.changedHa;
+        cell = pc.cell;
+        pc.mask.forEach((c) => union.add(c));
+      }
+      setAllChg({ total: (union.size * cell * cell) / 10000, byMonth });
+      return out;
+    })();
+  }
+
   async function paintPit(month: number) {
     const mesh = await loadPitMesh(month);
-    if (!mesh) return;
-    let pc = pitColorCache.current[month];
-    if (!pc) {
-      const prev = month > 1 ? await loadPitMesh(month - 1) : null;
-      pc = pitColorCache.current[month] ??= pitColors(mesh, prev);
+    const pc = await pitColorsFor(month);
+    if (!mesh || !pc) return;
+    const mode = blkRef.current.change;
+    let arr = mode === "month" && pc.change ? pc.change : pc.base;
+    if (mode === "all") {
+      const masks = await loadAllMasks();
+      arr = pitAllCache.current[month] ??= paintMonths(mesh, pc.base, masks);
     }
-    const arr = blkRef.current.change && pc.change ? pc.change : pc.base;
+    if (blkRef.current.change !== mode) return;   // хүлээх зуур горим солигдсон
     if (mesh.vertexAttributes.color !== arr) {
       mesh.vertexAttributes.color = arr;
       mesh.vertexAttributesChanged();
@@ -1808,16 +1847,30 @@ export default function MineScene() {
             {["I", "II", "III", "IV", "V", "VI"].map((lbl, i) => (
               <button key={lbl} aria-pressed={i + 1 === m}
                       aria-label={`${i + 1}-р сар`}
+                      /* «Нийт» горимд сарын өнгө доор нь зураас болж гарна */
+                      className={pitChange === "all" && MONTH_COLORS[i + 1] ? "mc" : undefined}
+                      style={pitChange === "all" && MONTH_COLORS[i + 1]
+                        ? { "--mc": `rgb(${MONTH_COLORS[i + 1].join(",")})` } as React.CSSProperties : undefined}
+                      title={pitChange === "all" && allChg?.byMonth[i + 1] !== undefined
+                        ? `${MON_L[lang][i]}: ${fmt(allChg.byMonth[i + 1], 1)} ${t.uHa}` : undefined}
                       onClick={() => setM(i + 1)}>{lbl}</button>
             ))}
-            {/* Өмнөх сарын хэмжилтээс өөрчлөгдсөн гадаргуу — улаанаар */}
+            {/* Өмнөх сарын хэмжилтээс өөрчлөгдсөн гадаргуу — улаанаар;
+                «Нийт» — бүх сарынхыг нэгтгэж, сар бүрийг өөр өнгөөр */}
             <span className="mmsep" aria-hidden="true" />
-            <button className="mchg" aria-pressed={pitChange && m > 1} disabled={m === 1}
-                    onClick={() => setPitChange((v) => !v)}
+            <button className="mchg" aria-pressed={pitChange === "month" && m > 1} disabled={m === 1}
+                    onClick={() => setPitChange((v) => v === "month" ? "off" : "month")}
                     title={m === 1 ? t.chgNone : t.chgHint}>
               <i aria-hidden="true" />
               {t.chgBtn}
-              {pitChange && m > 1 && changeHa !== null && <small>{fmt(changeHa, 1)} {t.uHa}</small>}
+              {pitChange === "month" && m > 1 && changeHa !== null && <small>{fmt(changeHa, 1)} {t.uHa}</small>}
+            </button>
+            <button className="mchg mall" aria-pressed={pitChange === "all"}
+                    onClick={() => setPitChange((v) => v === "all" ? "off" : "all")}
+                    title={t.chgAllHint}>
+              <i aria-hidden="true" />
+              {t.chgAll}
+              {pitChange === "all" && allChg && <small>{fmt(allChg.total, 1)} {t.uHa}</small>}
             </button>
           </div>
         )}

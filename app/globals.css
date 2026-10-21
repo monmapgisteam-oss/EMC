@@ -91,6 +91,25 @@ input{font:inherit}
 .brand b{font-size:17px;font-weight:700;letter-spacing:.06em;display:block;
   text-transform:uppercase;color:var(--ink)}
 .hspacer{flex:1}
+/* Толгойн сарын шүүлт — ArcGIS Dashboards-ийн сонгогч шиг доош нээгдэх жагсаалт */
+.dsel{position:relative}
+.dsel-btn{display:flex;align-items:center;gap:7px;height:30px;padding:0 9px 0 10px;border-radius:8px;
+  background:var(--sunken);border:1px solid var(--line-soft);color:var(--ink);font-size:12px;transition:.12s}
+.dsel-btn:hover,.dsel-btn[aria-expanded="true"]{border-color:var(--line)}
+.dsel-btn > svg{width:14px;height:14px;color:var(--ink-3);flex:none}
+.dsel-btn .dsel-l{color:var(--ink-3);font-size:11px}
+.dsel-btn b{font-weight:600;white-space:nowrap}
+.dsel-btn .dsel-chev{width:13px;height:13px;transition:transform .15s}
+.dsel-btn[aria-expanded="true"] .dsel-chev{transform:rotate(180deg)}
+.dsel-pop{position:absolute;right:0;top:calc(100% + 5px);z-index:50;min-width:190px;margin:0;padding:4px;list-style:none;
+  background:var(--surface);border:1px solid var(--line);border-radius:9px;box-shadow:0 10px 28px #0004}
+.dsel-pop li{display:grid;grid-template-columns:14px 1fr auto;align-items:center;gap:9px;padding:7px 9px;
+  border-radius:6px;font-size:12px;color:var(--ink-2);cursor:pointer}
+.dsel-pop li:hover{background:var(--sunken);color:var(--ink)}
+.dsel-pop li i{width:14px;height:14px;border-radius:50%;border:1.5px solid var(--line);box-sizing:border-box}
+.dsel-pop li[aria-selected="true"]{color:var(--ink);font-weight:600}
+.dsel-pop li[aria-selected="true"] i{border:4px solid var(--ui)}
+.dsel-pop li small{font:500 10.5px/1 "IBM Plex Mono",monospace;color:var(--ink-3)}
 .seg{display:flex;background:var(--sunken);border-radius:7px;padding:2px;border:1px solid var(--line-soft)}
 /* Өнгөний горимын шилжүүлэгч — тэмдэгт нь ☀ ◐ ☾ тул тэгш дөрвөлжин */
 /* Өнгөний горимын ганц товч — бөөрөнхий дөрвөлжин дотор нар/сар */
@@ -299,6 +318,10 @@ body.isolated .mmonths .mmsep{background:#34495b}
 .mmonths .mchg:disabled{opacity:.45;cursor:not-allowed}
 body.isolated .mmonths .mchg[aria-pressed="true"]{background:#4a1c1c;color:#ffd9d6;border-color:#e3342c}
 .mmonths .mchg[aria-pressed="true"] i{opacity:1}
+/* «Нийт» — сарын өнгөний шатлал, сарын товч доорх өнгөт зураас */
+.mmonths .mall i{background:linear-gradient(90deg,#ffd23f,#ff9f1c,#f25c2a,#d7263d,#b5179e)}
+body.isolated .mmonths .mall[aria-pressed="true"]{background:#3a1d38;color:#ffd9f4;border-color:#b5179e}
+.mmonths button.mc{box-shadow:inset 0 -3px 0 var(--mc)}
 body.isolated .gradekey{background:rgba(11,17,23,.92);border-color:#263441;color:#a8b6c4}
 
 .esri-view-surface--inset-outline:focus::after{outline:none !important}
