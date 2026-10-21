@@ -87,8 +87,7 @@ export async function loadParked(): Promise<Truck[]> {
     id: 10000 + i, dest: "BU" as DestCode, destName: "",
     lon: p[0], lat: p[1], z: 0, heading: p[2],
     loaded: false, halted: true, parked: true,
-    /* УЛААН — ачаа зөөж яваа машинуудаас (цэнхэр/улбар шар/ногоон)
-       тод ялгарна. Цуврал өнгө биш тул өгөгдлийн утга үүрэхгүй. */
+    /* Зогсоолын машин ч мөн шар Haul Truck; зогссон төлөв картад харагдана. */
     tonnes: 0, color: TRUCK_COLOR.park,
   }));
 }

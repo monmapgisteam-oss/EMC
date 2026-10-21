@@ -22,6 +22,9 @@ export const SVC = {
    *  тооцогдоно (tools/build_haul_routes.py -> public/data/haul_routes.json).
    *  Өмнөх `Road_truck` болон `Engineering_EMC/22` хоёрыг орлоно. */
   roadTruck: `${AGOL}/Road_truck_SL/FeatureServer/0`,
+  /** Аюулын бүсийн зураг (2025-01-13) — 14 полигон, `code` 1/2/3 =
+   *  аюулын түвшин (сервисийн өнгө: ногоон / улбар шар / улаан). */
+  hazard: `${AGOL}/HAZARD_MAP/FeatureServer/0`,
   /** Ил уурхайн БОДИТ гадаргуу — фотограмметрийн integrated mesh.
    *  lon 104.107–104.144, lat 49.013–49.033 (2.7 x 2.2 км), z 1139–1460 м.
    *  ӨӨР ХОСТ дээр (EMC-ийн ArcGIS Enterprise) — TLS Let's Encrypt,
@@ -140,13 +143,12 @@ export const PILE_HEX = "#c9a554";
 export const PILE_EDGE: [number, number, number, number] = [224, 72, 58, 1];
 export const PILE_EDGE_HEX = "#e04839";
 
-/** Ачааны машины ГУРВАН төрөл — очих газрын ангиллаар.
- *  Цуврал өнгө биш, тогтмол утга: чартын ангилалтай холбоогүй. */
+/** Бүх Haul Truck ижил шар будагтай; аюулын түвшнийг тусдаа тэмдэг харуулна. */
 export const TRUCK_COLOR = {
-  bu:    "#3aa0f0",   // цэнхэр — баяжуулах үйлдвэр
-  ore:   "#e8c14a",   // шар    — балансын овоолго
-  waste: "#2fbf7a",   // ногоон — балансын бус овоолго
-  park:  "#e0483a",   // улаан  — зогсоолын машин
+  bu:    "#f5b818",
+  ore:   "#f5b818",
+  waste: "#f5b818",
+  park:  "#f5b818",
 } as const;
 
 /** Питийн хаялбарууд — Excel-ийн «Түвшин» баганын бүх утга */

@@ -1,12 +1,14 @@
 "use client";
 
-import { Fragment } from "react";
 import { useStore } from "@/lib/store";
-import { C, COL_NAMES, ELEV, BLK2PILE, TRUCK_COLOR } from "@/lib/config";
-import { benchesOf, blocksAt, cuOf, grp, metalSum, moOf, monthlyFlow, sumCol } from "@/lib/excel";
-import { fmt, gradeColor } from "@/lib/format";
+import { C, COL_NAMES, ELEV } from "@/lib/config";
+import { benchesOf, cuOf, metalSum, moOf, monthlyFlow, sumCol } from "@/lib/excel";
+import { fmt } from "@/lib/format";
 import { MON_L, ROMAN } from "@/lib/i18n";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
+import type React from "react";
+import BenchDetail from "./BenchDetail";
+import DestinationBreakdown from "./DestinationBreakdown";
 
 /* ==========================================================================
    ХОЛБОГДСОН ШҮҮЛТ. Бүх чарт нэг Excel-ээс уншдаг тул нэг дор шүүгдэх
@@ -20,6 +22,18 @@ function useTuv(): number | undefined {
 }
 
 /* ------------------------------------------------------------------ KPI */
+/* KPI-ийн дүрсүүд — 24×24, зураасан (stroke) хэв маяг */
+const KPI_ICONS: Record<string, React.ReactNode> = {
+  /* олборлосон нөөц — хүдрийн талст */
+  res: (<><path d="M6.5 3.5h11l4 5.5L12 20.5 2.5 9z" /><path d="M2.5 9h19" /><path d="M9 3.5 7.5 9 12 20.5 16.5 9 15 3.5" /></>),
+  /* нийт хүдэр — хүдэртэй вагонетка */
+  ore: (<><path d="M2.5 9h19l-2.2 7.5H4.7z" /><path d="M6.5 9 8.5 5.5l3 2 3-2.5L17.5 9" /><circle cx="8" cy="19.5" r="1.6" /><circle cx="16" cy="19.5" r="1.6" /></>),
+  /* хоосон чулуулаг — овоолго */
+  waste: (<><path d="M1.5 20.5 8.5 9l3.5 5 3-4 7.5 10.5z" /><path d="M6 13.2l2.3 1.3 1.7-1.6" /></>),
+  /* нийт уулын цул — давхаргууд */
+  rock: (<><path d="m12 2.8 9.5 5L12 12.8 2.5 7.8z" /><path d="m2.5 12.2 9.5 5 9.5-5" /><path d="m2.5 16.6 9.5 5 9.5-5" /></>),
+};
+
 export function Kpis() {
   const { m, t } = useStore();
   const tuv = useTuv();
@@ -29,11 +43,12 @@ export function Kpis() {
        NIIT   — нийт олборлосон хүдэр (БҮ + овоолгууд)
        HOOSON — хоосон чулуулаг (Овоолго №1, 4, 11)
        TSUL   — нийт уулын цул */
+  /* `c` — картын өнгө: дүрсний хайрцаг ба доорх шошгыг өнгөлнө */
   const defs = [
-    { k: t.kRes,   s: t.kResSub,   ci: C.NOOC,   u: t.uKt, dec: 1 },
-    { k: t.kOre,   s: t.kOreSub,   ci: C.NIIT,   u: t.uKt, dec: 0 },
-    { k: t.kWaste, s: t.kWasteSub, ci: C.HOOSON, u: t.uM3, dec: 1 },
-    { k: t.kRock,  s: t.kRockSub,  ci: C.TSUL,   u: t.uM3, dec: 0 },
+    { k: t.kRes,   s: t.kResSub,   ci: C.NOOC,   u: t.uKt, dec: 1, ic: "res",   c: "var(--g4)" },
+    { k: t.kOre,   s: t.kOreSub,   ci: C.NIIT,   u: t.uKt, dec: 0, ic: "ore",   c: "var(--s1)" },
+    { k: t.kWaste, s: t.kWasteSub, ci: C.HOOSON, u: t.uM3, dec: 1, ic: "waste", c: "var(--s4)" },
+    { k: t.kRock,  s: t.kRockSub,  ci: C.TSUL,   u: t.uM3, dec: 0, ic: "rock",  c: "var(--ui)" },
   ];
   return (
     <div className="kpis">
@@ -42,18 +57,24 @@ export function Kpis() {
         const prev = p ? sumCol(p, o.ci, tuv) : null;
         const pc = prev ? ((v - prev) / prev) * 100 : null;
         return (
-          <div className="kpi" key={o.k}>
-            <div className="k">{o.k}</div>
-            <div className="v">
-              <b>{fmt(v, o.dec)}</b>
-              <i>{o.u}</i>
-              {pc !== null && (
-                <em className={pc >= 0 ? "up" : "dn"}>
-                  {(pc >= 0 ? "▲ " : "▼ ") + Math.abs(pc).toFixed(1) + "%"}
-                </em>
-              )}
+          <div className="kpi" key={o.k} style={{ ["--c" as any]: o.c } as React.CSSProperties}>
+            <span className="kic" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"
+                   strokeLinecap="round" strokeLinejoin="round">{KPI_ICONS[o.ic]}</svg>
+            </span>
+            <div className="kbody">
+              <div className="k">{o.k}</div>
+              <div className="v">
+                <b>{fmt(v, o.dec)}</b>
+                <i>{o.u}</i>
+                {pc !== null && (
+                  <em className={pc >= 0 ? "up" : "dn"}>
+                    {(pc >= 0 ? "▲ " : "▼ ") + Math.abs(pc).toFixed(1) + "%"}
+                  </em>
+                )}
+              </div>
+              <div className="ks"><i /><span>{o.s}</span></div>
             </div>
-            <div className="ks">{o.s}</div>
           </div>
         );
       })}
@@ -66,8 +87,8 @@ export function BenchRail() {
   const { m, t, lang, sel, toggleBench, setTip } = useStore();
   /* Зөвхөн тухайн сард ХӨДӨЛГӨӨНТЭЙ түвшин. Мэдээлэлгүй хаялбарыг бүдэг
      шошготой үлдээж үзсэн боловч жагсаалтын талыг эзэлж, утгатай мөрүүд
-     доош түлхэгдэж байв. Багана нь баруун талын тэнхлэгээс ЗҮҮН тийш
-     ургана. */
+     доош түлхэгдэж байв. Түвшний өндөр зүүн талд, багана нь зүүн талын
+     тэнхлэгээс БАРУУН тийш ургана. */
   const act = benchesOf(m);
   const tot = act.reduce((a2, e) => a2 + sumCol(m, C.NIIT, e), 0) || 1;
   const mx = Math.max(...act.map((e) => sumCol(m, C.NIIT, e)), 1);
@@ -94,7 +115,7 @@ export function BenchRail() {
                 title: `${t.dBench} ${e} м`, key: `${m} | ${e}`,
                 hint: on ? t.filterAgain : undefined,
                 rows: [
-                  { label: COL_NAMES[lang][C.NIIT], value: `${fmt(kt, 0)} ${t.uKt}`, color: gradeColor(cu) },
+                  { label: COL_NAMES[lang][C.NIIT], value: `${fmt(kt, 0)} ${t.uKt}`, color: "var(--bench)" },
                   { label: t.tCu, value: `${cu.toFixed(3)} %` },
                   { label: t.tMo, value: `${moOf(m, e).toFixed(4)} %` },
                   { label: t.tShare, value: `${((kt / tot) * 100).toFixed(1)} %` },
@@ -104,17 +125,18 @@ export function BenchRail() {
             onMouseMove={(ev) => setTip((prev) => (prev ? { ...prev, x: ev.clientX, y: ev.clientY } : prev))}
             onMouseLeave={() => setTip(null)}
           >
+            <span className="bl">{e}</span>
             <span className="bwrap">
               {/* Тоо нь баганын УРД ҮЗҮҮРТ. Өмнө нь баганын ДОТОР, суурь
                   талд нь бичигдээд, 26 %-аас богино багана дээр огт
                   харагддаггүй байв — жижиг түвшнүүд тоогүй үлддэг.
-                  Хамгийн урт баганууд дээр л гадна талд зай үлдэхгүй тул
-                  тэдгээрт нь үзүүрийн дотор талд оруулна. */}
-              <i style={{ width: `${w.toFixed(1)}%`, ["--c" as any]: gradeColor(cu) }}>
-                <b className={w > 86 ? "in" : ""}>{fmt(kt, 0)}</b>
+                  Хамгийн урт баганад ч тоо гадна талдаа багтахаар `.bwrap`
+                  баруун талдаа тогтмол зай үлдээнэ (globals.css). */}
+              {/* Бүх багана НЭГ өнгөтэй (--bench) — агуулгаар өнгөлөхөө больсон */}
+              <i style={{ width: `${w.toFixed(1)}%`, ["--c" as any]: "var(--bench)" }}>
+                <b>{fmt(kt, 0)}</b>
               </i>
             </span>
-            <span className="bl">{e}</span>
           </button>
         );
       })}
@@ -160,50 +182,102 @@ function smoothPath(pts: [number, number][]): string {
   return d;
 }
 
+/* SVG-ийн градиентийн id нь хуудсан дээр давтагдахгүй байх ёстой.
+   React-ийн `useId` нь «:» тэмдэгт агуулдаг тул `url(#…)`-д ашиглахын
+   өмнө цэвэрлэнэ. */
+function useSvgId(prefix: string): string {
+  return prefix + useId().replace(/[^a-zA-Z0-9_-]/g, "");
+}
+
+/* ==========================================================================
+   Түвшин бүрийн нөөц ба хүдэр — БАГАНА + ШУГАМ.
+   --------------------------------------------------------------------------
+   Хоёр шугам бараг давхцаж, ялгаа нь уншигддаггүй байв. Одоо «Нийт
+   хүдэр» нь градиент багана (үзүүр нь тод, суурь руугаа бүдгэрнэ), харин
+   «Олборлосон нөөц» нь дээр нь давхарласан шугам. Хоёр цуврал нэг
+   нэгжтэй (мян.тн) тул нэг тэнхлэгт сууна. Шугам баганын оройтой
+   давхцвал тухайн түвшний хүдэр бүхэлдээ нөөц; доор нь зай үлдвэл
+   нөөцөөс гадуурх хүдэр.
+   ========================================================================== */
 export function BenchLine() {
-  const { m, t, lang, setTip } = useStore();
+  const { m, t, lang, sel, setTip } = useStore();
   const li = lang === "mn" ? 0 : 1;
+  const gid = useSvgId("bl");
   const act = ELEV.filter((e) => BSERIES.some((s2) => sumCol(m, s2.ci, e)));
-  const W = 320, H = 104, PL = 30, PR = 6, PT = 8, PB = 14;
+  const W = 320, H = 140, PL = 42, PR = 12, PT = 14, PB = 22;
   if (act.length < 2) return <div className="empty">{t.noData}</div>;
 
+  const [line, bar] = BSERIES;
   const vals = BSERIES.map((s2) => act.map((e) => sumCol(m, s2.ci, e)));
+  const [lineV, barV] = vals;
   const mx = Math.max(...vals.flat(), 1);
   const step = Math.pow(10, Math.floor(Math.log10(mx))) / 2;
   const top = Math.ceil(mx / step) * step;
-  const x = (i: number) => PL + (i / (act.length - 1)) * (W - PL - PR);
+  /* Баганын тэнхлэг: түвшин бүр тэнцүү өргөнтэй зурвас эзэлж, шугам нь
+     зурвасын голоор дамжина. */
+  const band = (W - PL - PR) / act.length;
+  const bw = Math.min(14, band * 0.56);
+  const x = (i: number) => PL + (i + 0.5) * band;
   const y = (v: number) => PT + (1 - v / top) * (H - PT - PB);
+  const base = y(0);
   const ticks = [0, 0.25, 0.5, 0.75, 1].map((f) => f * top);
+  const pick = sel?.kind === "bench" ? sel.tuv : undefined;
+  const pickIndex = pick === undefined ? -1 : act.indexOf(pick);
+  // Keep enlarged axis labels clear of the selected bench label.
+  const labelGap = 34;
+  const labelStep = Math.max(1, Math.ceil(labelGap / band));
+  const showLevelLabel = (i: number) => i === pickIndex ||
+    (i % labelStep === 0 && (pickIndex < 0 || Math.abs(i - pickIndex) * band >= labelGap));
+  const peak = barV.indexOf(Math.max(...barV));
+  /* Шошго нь зөвхөн тодруулах нэг баганад: сонгосон түвшин, эсвэл
+     сонголтгүй үед хамгийн их хүдэртэй түвшин. */
+  const labelAt = pickIndex >= 0 ? pickIndex : peak;
 
   return (
     <div className="lchart">
       <div className="legend2">
-        {BSERIES.map((s2, k) => (
-          <span key={k}><i style={{ background: s2.c }} />{s2.nm[li]}</span>
-        ))}
+        <span><i className="sw-bar" style={{ ["--c" as any]: bar.c }} />{bar.nm[li]}</span>
+        <span><i className="sw-line" style={{ ["--c" as any]: line.c }} />{line.nm[li]}</span>
       </div>
       <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="lsvg">
+        <defs>
+          <linearGradient id={gid} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" style={{ stopColor: bar.c, stopOpacity: 0.95 }} />
+            <stop offset="1" style={{ stopColor: bar.c, stopOpacity: 0.06 }} />
+          </linearGradient>
+        </defs>
         {ticks.map((v, k) => (
           <g key={k}>
-            <line x1={PL} x2={W - PR} y1={y(v)} y2={y(v)} className="lgrid" />
-            <text x={PL - 4} y={y(v) + 3} className="ltxt" textAnchor="end">{fmt(v, 0)}</text>
+            {k > 0 && <line x1={PL} x2={W - PR} y1={y(v)} y2={y(v)} className="lgrid" />}
+            <text x={PL - 4} y={y(v) + 4} className="ltxt" textAnchor="end">{v === 0 ? "0" : fmt(v, 0)}</text>
           </g>
         ))}
-        {BSERIES.map((s2, k) => (
-          <path key={k} fill="none" stroke={s2.c} strokeWidth={1.6}
-                strokeLinecap="round" strokeLinejoin="round"
-                d={smoothPath(act.map((e, i) => [x(i), y(vals[k][i])] as [number, number]))} />
-        ))}
-        {BSERIES.map((s2, k) => act.map((e, i) => (
-          <circle key={`${k}-${e}`} cx={x(i)} cy={y(vals[k][i])} r={2} fill={s2.c} />
-        )))}
+        {act.map((e, i) => {
+          const dim = pick !== undefined && pick !== e;
+          const h = Math.max(base - y(barV[i]), barV[i] > 0 ? 1.5 : 0);
+          return (
+            <g key={`b${e}`} className={"lbar" + (dim ? " dim" : "")}>
+              <rect x={x(i) - bw / 2} y={base - h} width={bw} height={h} fill={`url(#${gid})`} />
+              <rect x={x(i) - bw / 2} y={base - h} width={bw} height={1.4} style={{ fill: bar.c }} />
+            </g>
+          );
+        })}
+        <path className="lline" fill="none" stroke={line.c} strokeWidth={1.5}
+              strokeLinecap="round" strokeLinejoin="round" style={{ color: line.c }}
+              d={smoothPath(act.map((e, i) => [x(i), y(lineV[i])] as [number, number]))} />
         {act.map((e, i) => (
-          <text key={e} x={x(i)} y={H - 4} className="ltxt" textAnchor="middle">
-            {i % 2 === 0 ? e : ""}
+          <circle key={`p${e}`} cx={x(i)} cy={y(lineV[i])} r={1.9} className="ldot" style={{ stroke: line.c }} />
+        ))}
+        <text x={x(labelAt)} y={y(Math.max(barV[labelAt], lineV[labelAt])) - 4} className="lpeak" textAnchor="middle">
+          {fmt(barV[labelAt], 0)}
+        </text>
+        {act.map((e, i) => (
+          <text key={e} x={x(i)} y={H - 8} className={"ltxt" + (e === pick ? " on" : "")} textAnchor="middle">
+            {showLevelLabel(i) ? e : ""}
           </text>
         ))}
         {act.map((e, i) => (
-          <rect key={`h${e}`} x={x(i) - 8} y={0} width={16} height={H} fill="transparent"
+          <rect key={`h${e}`} x={x(i) - band / 2} y={0} width={band} height={H} fill="transparent"
                 onMouseEnter={(ev) => setTip({
                   x: ev.clientX, y: ev.clientY, title: `${t.dBench} ${e} м`,
                   rows: BSERIES.map((s2, k) => ({
@@ -222,13 +296,7 @@ export function BenchLine() {
 
 /* --------------------------------------------------- дэлгэрэнгүй карт */
 export function DetailCard() {
-  const { m, t, lang, sel, blk, setBlk } = useStore();
-  /* Эвхэгдсэн бүлгүүд. Түлхүүр нь SECTIONS-ийн `key` — нэг төрөл хоёр
-     бүлэгт хуваагдсан байж болох тул (Бохирдол: мян.тн ба %) хамт
-     эвхэгдэнэ. Хук нь эрт `return`-үүдээс ӨМНӨ байх ёстой. */
-  const [hid, setHid] = useState<Record<string, boolean>>({});
-  const toggleSec = (k: string) => setHid((p) => ({ ...p, [k]: !p[k] }));
-  const anyHid = Object.values(hid).some(Boolean);
+  const { m, t, sel, blk } = useStore();
 
   if (!sel) {
     return (
@@ -239,99 +307,9 @@ export function DetailCard() {
   }
 
   if (sel.kind === "bench") {
-    const blks = blocksAt(m, sel.tuv);
-    const cur = blk && blks.includes(blk) ? blk : blks[0];
-    const g = cur ? grp(m, sel.tuv, cur) : null;
-    const rows = g
-      ? Array.from({ length: 15 }, (_, i) => i).filter((i) => g.kt[i] || g.cu[i] || g.mo[i])
-      : [];
-
-    return (
-      <div className="pb">
-          <div className="blkchips">
-            {blks.map((b) => (
-              <button key={b} aria-pressed={b === cur} onClick={() => setBlk(b)}>
-                {b === "БҮ" ? "БҮ" : "№" + b}
-              </button>
-            ))}
-            {/* Эвхсэн бүлгийг сэргээх зам үргэлж нүдэн дээр байна */}
-            {anyHid && (
-              <button className="secall" onClick={() => setHid({})} title={t.secAll}>
-                {t.secAll}
-              </button>
-            )}
-          </div>
-          <div className="dtable">
-            {!rows.length || !g ? (
-              <div className="empty">{t.noData}</div>
-            ) : (
-              /* БҮЛЭГЛЭСЭН. Урьд нь 15 багана нэг жагсаалтад орж, толгойд
-                 «мян.тн» гэж бичээд мөр бүрийн ард «кт»/«м³» гэсэн ӨӨР нэгж
-                 давхар наалддаг байсан тул м³-ийн мөрүүд мян.тн-ы багана
-                 дор орж ойлгомжгүй болж байв. Одоо нэгж БҮЛГИЙН гарчигт
-                 нэг л удаа бичигдэнэ. */
-              <table>
-                <tbody>
-                  {(() => {
-                    /* Утга бүхий бүлгүүд ба төрөл тус бүрийн мөрийн тоо.
-                       Эвхэгдсэн үед нэг төрлийн ХОЁР бүлэг (Бохирдол ·
-                       мян.тн ба Бохирдол · %) хоёр ижил гарчиг болж
-                       давхарлахгүйн тулд эхнийхийг нь л үлдээж, нийт
-                       мөрийн тоог хажууд нь бичнэ. */
-                    const vis = SECTIONS
-                      .map((sec) => ({ sec, has: sec.cols.filter((i) => rows.includes(i)) }))
-                      .filter((o) => o.has.length);
-                    const cnt: Record<string, number> = {};
-                    vis.forEach((o) => { cnt[o.sec.key] = (cnt[o.sec.key] ?? 0) + o.has.length; });
-                    const seen = new Set<string>();
-
-                    return vis.map(({ sec, has }, si) => {
-                      const off = !!hid[sec.key];
-                      if (off) {
-                        if (seen.has(sec.key)) return null;
-                        seen.add(sec.key);
-                      }
-                      return (
-                        <Fragment key={si}>
-                          <tr className={"dsec" + (off ? " off" : "")}>
-                            <th>
-                              <button className="sech" aria-expanded={!off}
-                                      onClick={() => toggleSec(sec.key)}
-                                      title={off ? t.secShow : t.secHide}>
-                                <span className="chev">{off ? "▸" : "▾"}</span>
-                                {t[sec.key]}
-                                {off && <em>{cnt[sec.key]}</em>}
-                              </button>
-                            </th>
-                            <th className="mono">
-                              {off ? "" : sec.unit === "pct" ? t.uPct : sec.unit === "m3" ? t.uM3 : t.uKt}
-                            </th>
-                            <th className="mono">{off ? "" : t.thCu}</th>
-                            <th className="mono">{off ? "" : t.thMo}</th>
-                          </tr>
-                          {!off && has.map((i) => (
-                            <tr key={i}>
-                              <td>{COL_NAMES[lang][i]}</td>
-                              <td className="mono">{fmt(g.kt[i], sec.unit === "pct" ? 2 : 1)}</td>
-                              <td className={"mono" + (g.cu[i] ? "" : " zero")}>
-                                {g.cu[i] ? g.cu[i].toFixed(3) : "—"}</td>
-                              <td className={"mono" + (g.mo[i] ? "" : " zero")}>
-                                {g.mo[i] ? g.mo[i].toFixed(4) : "—"}</td>
-                            </tr>
-                          ))}
-                        </Fragment>
-                      );
-                    });
-                  })()}
-                </tbody>
-              </table>
-            )}
-        </div>
-      </div>
-    );
+    return <BenchDetail key={`${m}:${sel.tuv}:${blk ?? ""}`} level={sel.tuv} />;
   }
 
-  /* хүлээн авагч сонгосон */
   const ci = sel.ci;
   const isM3 = ci === C.HOOSON || ci === C.TSUL;
   const rows = ELEV.map((e) => [e, sumCol(m, ci, e), metalSum(m, "cu", ci, e), metalSum(m, "mo", ci, e)] as const)
@@ -372,79 +350,8 @@ export function DetailCard() {
    Өмнө нь доод талд 880 px өргөн SVG байсан. Зүүн баганад (252 px) багтахын
    тулд сар бүрийг ХЭВТЭЭ мөр болгосон — дээрх түвшний рейлтэй ижил хэмнэл:
    шошго · багана · тоо. Уншихад ч, харьцуулахад ч илүү тод. */
-/** Дэлгэрэнгүй картын бүлгүүд — нэгж нь бүлэг тутамд НЭГ удаа бичигдэнэ */
-const SECTIONS: { key: "secOre" | "secDil" | "secDest" | "secWaste" | "secRock";
-                  unit: "kt" | "pct" | "m3"; cols: number[] }[] = [
-  { key: "secOre",   unit: "kt",  cols: [C.NOOC, C.BU_U, C.AGU] },
-  { key: "secDil",   unit: "kt",  cols: [C.BOH] },
-  { key: "secDil",   unit: "pct", cols: [C.HAY, C.BOHP] },
-  { key: "secDest",  unit: "kt",  cols: [C.BU, C.OV12, C.OV14, C.OV8A, C.NIIT] },
-  { key: "secWaste", unit: "kt",  cols: [C.OV9A, C.OV9B] },
-  { key: "secWaste", unit: "m3",  cols: [C.HOOSON] },
-  { key: "secRock",  unit: "m3",  cols: [C.TSUL] },
-];
-
-/* ==========================================================================
-   Чиглэл тус бүрийн хуваарилалт — сонгосон сард уулын цул ХААШАА, ХЭДИЙ
-   хэмжээгээр явсныг задална. I–VI сарын чарт нь гурван бүлгийн ДҮНГ
-   харуулдаг бол энэ нь хүлээн авагч бүрээр задална.
-   Өнгө нь газрын зураг дээрх машины өнгөтэй ИЖИЛ (TRUCK_COLOR).
-   ========================================================================== */
-const DEST_ROWS: { ci: number; nm: [string, string]; c: string }[] = [
-  { ci: C.BU,     nm: ["Баяжуулах үйлдвэр", "Concentrator"],    c: TRUCK_COLOR.bu },
-  { ci: C.OV12,   nm: ["Овоолго 12", "Stockpile 12"],           c: TRUCK_COLOR.ore },
-  { ci: C.OV14,   nm: ["Овоолго 14", "Stockpile 14"],           c: TRUCK_COLOR.ore },
-  { ci: C.OV8A,   nm: ["Овоолго 8а", "Stockpile 8a"],           c: TRUCK_COLOR.ore },
-  { ci: C.OV9A,   nm: ["Овоолго 9а · 8 · 9", "Piles 9a, 8, 9"], c: TRUCK_COLOR.waste },
-  { ci: C.OV9B,   nm: ["Овоолго 9б", "Pile 9b"],                c: TRUCK_COLOR.waste },
-  { ci: C.HOOSON, nm: ["Овоолго №1, 4, 11", "Piles 1, 4, 11"],  c: TRUCK_COLOR.waste },
-];
-
-/* Идэвхтэй шүүлтийн банер ХАСАГДСАН: газрын зургийн дээр нэмэлт мөр
-   гарч, зургийн талбайг иддэг байв. Шүүлтийг цуцлах хоёр зам үлдсэн —
-   сонгосон элемент дээр ДАХИН дарах, эсвэл Esc. Сонголт нь чарт дээрээ
-   тодорч харагддаг тул банергүйгээр ч хаана шүүлт тавигдсан нь мэдэгдэнэ. */
-
 export function DestChart() {
-  const { m, t, lang, sel, setTip } = useStore();
-  const tuv = useTuv();
-  const li = lang === "mn" ? 0 : 1;
-  const rows = DEST_ROWS.map((d) => ({ ...d, v: sumCol(m, d.ci, tuv) }));
-  const tot = rows.reduce((a, r) => a + r.v, 0) || 1;
-  const mx = Math.max(...rows.map((r) => r.v), 1);
-
-  return (
-    <div className="dchart">
-      {rows.map((r) => (
-        /* Газрын зургаас сонгосон хүлээн авагч энд тодрох — сонголт хаана
-           тавигдсаныг чарт дээрээс шууд уншина. */
-        <div className={"drow2" + (sel?.kind === "dest" && sel.ci === r.ci ? " on" : "")}
-             key={r.ci}
-             onMouseEnter={(ev) => setTip({
-               x: ev.clientX, y: ev.clientY, title: r.nm[li],
-               rows: [
-                 { label: t.thTot, value: `${fmt(r.v, 0)} ${t.uKt}`, color: r.c },
-                 { label: t.uPct, value: `${((r.v / tot) * 100).toFixed(1)} %` },
-               ],
-             })}
-             onMouseMove={(ev) => setTip((p) => (p ? { ...p, x: ev.clientX, y: ev.clientY } : p))}
-             onMouseLeave={() => setTip(null)}>
-          <span className="dlab2">{r.nm[li]}</span>
-          <span className="dbar">
-            <i style={{ width: `${(r.v / mx) * 100}%`, ["--c" as any]: r.c }} />
-          </span>
-          <span className="dval">{r.v ? fmt(r.v, 0) : "—"}</span>
-          <span className="dpct">{r.v ? `${((r.v / tot) * 100).toFixed(0)} %` : ""}</span>
-        </div>
-      ))}
-      <div className="drow2 tot">
-        <span className="dlab2">{t.thTot}</span>
-        <span />
-        <span className="dval">{fmt(tot, 0)}</span>
-        <span className="dpct">{t.uKt}</span>
-      </div>
-    </div>
-  );
+  return <DestinationBreakdown />;
 }
 
 export function Timeline() {
@@ -464,8 +371,6 @@ export function Timeline() {
   const axMax = Math.ceil(Math.max(...totals, 1) / STEP) * STEP;
   const ticks = Array.from({ length: axMax / STEP + 1 }, (_, k) => k * STEP);
 
-  const cur = data[m - 1];
-  const curTot = totals[m - 1] || 1;
 
   return (
     <>
@@ -492,14 +397,15 @@ export function Timeline() {
             <button key={i} className="mrow" aria-pressed={sel}
                     onClick={() => setM(i + 1)}
                     onMouseEnter={(ev) => setTip({
-                      x: ev.clientX, y: ev.clientY, title: MON_L[lang][i],
+                      x: ev.clientX, y: ev.clientY, title: MON_L[lang][i], unit: t.uKt,
                       rows: [
                         ...names.map((n, k) => ({
                           label: n,
-                          value: `${fmt(d[k], 0)} ${t.uKt}  ·  ${((d[k] / (tot || 1)) * 100).toFixed(0)} %`,
+                          value: fmt(d[k], 0),
+                          pct: (d[k] / (tot || 1)) * 100,
                           color: cols[k],
                         })),
-                        { label: t.thTot, value: `${fmt(tot, 0)} ${t.uKt}` },
+                        { label: t.thTot, value: fmt(tot, 0), total: true },
                       ],
                     })}
                     onMouseMove={(ev) => setTip((p) => (p ? { ...p, x: ev.clientX, y: ev.clientY } : p))}
@@ -520,26 +426,6 @@ export function Timeline() {
         })}
       </div>
 
-      {/* Тайлбар нь зөвхөн өнгө нэрлэхээс гадна СОНГОСОН сарын тоо, эзлэх
-          хувийг шууд харуулна — өмнө нь тоог зөвхөн хулганаар дүүжлэхэд
-          л мэдэх боломжтой байсан. */}
-      <div className="tlbd">
-        <div className="tlbh">{MON_L[lang][m - 1]} · {t.tlBreak}</div>
-        {names.map((n, k) => (
-          <div className="tlb" key={n}>
-            <i style={{ ["--c" as any]: cols[k] }} />
-            <span className="tlbn">{n}</span>
-            <span className="tlbv">{cur[k] > 0 ? fmt(cur[k], 0) : "—"}</span>
-            <span className="tlbp">{cur[k] > 0 ? `${((cur[k] / curTot) * 100).toFixed(0)} %` : ""}</span>
-          </div>
-        ))}
-        <div className="tlb tot">
-          <i className="none" />
-          <span className="tlbn">{t.thTot}</span>
-          <span className="tlbv">{fmt(curTot, 0)}</span>
-          <span className="tlbp">{t.uKt}</span>
-        </div>
-      </div>
     </>
   );
 }
@@ -565,89 +451,173 @@ export function Timeline() {
    Тэнхлэг нь 0-ээс биш, цувралын доод утгаас эхэлнэ (Cu 0.410–0.422 гэх
    мэт бага хэлбэлзлийг 0-ээс зурвал шулуун шугам болно). Тасалсныг
    мэдэгдэхийн тулд дээд, доод утгыг ЗААВАЛ бичнэ. */
-function AreaPair({
-  rows, aLabel, bLabel, aDec, bDec, aColor, bColor, aUnit, bUnit,
+/* ==========================================================================
+   НЭГ үзүүлэлтийн талбайн чарт, сараар.
+   --------------------------------------------------------------------------
+   Урьд нь нэг панелд хоёр чарт зэрэгцүүлж байсныг САЛГАВ — үзүүлэлт бүр
+   өөрийн панелтай. Ингэснээр чарт өргөсөж, сарын хэлбэлзэл тод уншигдана.
+
+   Тэнхлэг 0-ээс биш цувралын доод утгаас эхэлнэ (Cu 0.410–0.422-ыг 0-ээс
+   зурвал шулуун шугам болно). Тасалсныг мэдэгдэхийн тулд доод, дээд
+   утгыг заавал бичнэ.
+   ========================================================================== */
+function AreaOne({
+  rows, label, dec, color, unit,
 }: {
-  rows: { key: string; a: number; b: number }[];
-  aLabel: string; bLabel: string;
-  aDec: number; bDec: number;
-  aColor: string; bColor: string;
-  aUnit: string; bUnit: string;
+  rows: { key: string; v: number }[];
+  label: string; dec: number; color: string; unit: string;
 }) {
-  const { setTip, lang } = useStore();
-  const one = (pick: "a" | "b", label: string, color: string, dec: number, unit: string) => {
-    const v = rows.map((r) => r[pick]);
-    const lo = Math.min(...v), hi = Math.max(...v);
-    const pad = (hi - lo) * 0.18 || Math.abs(hi) * 0.08 || 1;
-    const y0 = lo - pad, y1 = hi + pad;
-    const W = 150, H = 54, PB = 10, PT = 8;
-    const x = (i: number) => (i / (rows.length - 1)) * W;
-    const y = (t2: number) => PT + (1 - (t2 - y0) / (y1 - y0)) * (H - PT - PB);
-    /* Гөлгөр муруй — түвшний чарттай ижил `smoothPath`. Талбай нь мөн
-       ТЭР МУРУЙГ дагана: шугам гөлгөр, дүүргэлт нь өнцөгтэй үлдвэл хоёр
-       нь салж, доод захаараа цагаан зай үүсгэнэ. */
-    const pts = rows.map((r, i) => [x(i), y(v[i])] as [number, number]);
-    const line = smoothPath(pts);
-    const area = `${line} L${W},${H - PB} L0,${H - PB} Z`;
-    return (
-      <div className="acell">
-        <div className="ahead" style={{ color }}>{label}</div>
-        <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="asvg">
-          <path d={area} fill={color} opacity={0.18} />
-          <path d={line} fill="none" stroke={color} strokeWidth={1.6}
-                strokeLinecap="round" strokeLinejoin="round" />
-          {rows.map((r, i) => <circle key={r.key} cx={x(i)} cy={y(v[i])} r={1.8} fill={color} />)}
-          {rows.map((r, i) => (
-            <rect key={"h" + r.key} x={x(i) - W / (rows.length * 2)} y={0}
-                  width={W / rows.length} height={H} fill="transparent"
-                  onMouseEnter={(ev) => setTip({
-                    x: ev.clientX, y: ev.clientY,
-                    title: MON_L[lang][i],
-                    rows: [{ label, value: `${v[i].toFixed(dec)} ${unit}`, color }],
-                  })}
-                  onMouseMove={(ev) => setTip((pv) => (pv ? { ...pv, x: ev.clientX, y: ev.clientY } : pv))}
-                  onMouseLeave={() => setTip(null)} />
-          ))}
-        </svg>
-        {/* Тасалсан тэнхлэгийг мэдэгдэхийн тулд доод/дээд утгыг бичнэ */}
-        <div className="arange"><span>{lo.toFixed(dec)}</span><span>{hi.toFixed(dec)}</span></div>
-        {/* Сарын шошго нь чарт ТУС БҮРИЙН дотор. Хоёрын доор нэг мөр
-            байрлуулбал I–III нь зүүн чартын, IV–VI нь баруунгийн доор
-            орж, буруу уншигдана. */}
-        <div className="axlab">{rows.map((r) => <span key={r.key}>{r.key}</span>)}</div>
-      </div>
-    );
+  const { setTip, lang, m } = useStore();
+  const gid = useSvgId("ar");
+  const plotRef = useRef<SVGSVGElement>(null);
+  const [plotSize, setPlotSize] = useState({ width: 300, height: 120 });
+  useEffect(() => {
+    const svg = plotRef.current;
+    if (!svg) return;
+    const updateSize = (width: number, height: number) => {
+      if (width <= 0 || height <= 0) return;
+      const next = { width: Math.round(width), height: Math.round(height) };
+      setPlotSize(previous => previous.width === next.width && previous.height === next.height ? previous : next);
+    };
+    const observer = new ResizeObserver(([entry]) => updateSize(entry.contentRect.width, entry.contentRect.height));
+    observer.observe(svg);
+    const bounds = svg.getBoundingClientRect();
+    updateSize(bounds.width, bounds.height);
+    return () => observer.disconnect();
+  }, []);
+  const v = rows.map((r) => r.v);
+  /* Шошго нь зөвхөн сонгосон сар ба оргил цэгт — зургаан тоо зэрэг
+     бичигдэхэд нүд аль нэгэнд нь ч тогтдоггүй байв. Бусад утгыг
+     доод/дээд хязгаар болон tooltip-оос уншина. */
+  const cur = m - 1;
+  const peak = v.indexOf(Math.max(...v));
+  const lo = Math.min(...v), hi = Math.max(...v);
+  const pad = (hi - lo) * 0.18 || Math.abs(hi) * 0.08 || 1;
+  const y0 = lo - pad, y1 = hi + pad;
+  /* Цэг бүрийн утгыг ШОШГООР бичнэ — дүүжлэхгүйгээр уншигдана.
+     Дээд талд нь бичих зай гаргахын тулд PT-г томсгов. */
+  const W = plotSize.width, H = plotSize.height, PB = 30, PT = 22;
+  const x = (i: number) => (i / (rows.length - 1)) * W;
+  const y = (t2: number) => PT + (1 - (t2 - y0) / (y1 - y0)) * (H - PT - PB);
+  // The 9px monospace labels need room at the chart edges on narrow panels.
+  const labelBounds = (i: number) => {
+    const width = v[i].toFixed(dec).length * 5.4;
+    const left = x(i) - (i === 0 ? 0 : i === rows.length - 1 ? width : width / 2);
+    return { left, right: left + width };
   };
+  const currentLabel = labelBounds(cur), peakLabel = labelBounds(peak);
+  const labelsOverlap = Math.abs(y(v[cur]) - y(v[peak])) < 14 &&
+    currentLabel.left < peakLabel.right + 4 && peakLabel.left < currentLabel.right + 4;
+  const labelled = new Set(lo === hi || labelsOverlap ? [cur] : [cur, peak]);
+  /* Гөлгөр муруй. Талбай нь мөн ТЭР МУРУЙГ дагана: шугам гөлгөр, дүүргэлт
+     нь өнцөгтэй үлдвэл хоёр нь салж, доод захаараа зай үүсгэнэ. */
+  const pts = rows.map((r, i) => [x(i), y(v[i])] as [number, number]);
+  const line = smoothPath(pts);
+  const area = `${line} L${W},${H - PB} L0,${H - PB} Z`;
+
   return (
-    <div className="achart">
-      <div className="acells">
-        {one("a", aLabel, aColor, aDec, aUnit)}
-        {one("b", bLabel, bColor, bDec, bUnit)}
-      </div>
+    <div className="acell">
+      <div className="ahead" style={{ color }}>{label}</div>
+      <svg ref={plotRef} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="asvg">
+        {/* Талбай нь шугамын доор тод, суурь руугаа бүрэн тунгалаг болж
+            дэвсгэрт уусна. */}
+        <defs>
+          <linearGradient id={gid} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" style={{ stopColor: color, stopOpacity: 0.42 }} />
+            <stop offset="1" style={{ stopColor: color, stopOpacity: 0 }} />
+          </linearGradient>
+        </defs>
+        {[0.33, 0.66].map((f) => (
+          <line key={f} x1={0} x2={W} y1={PT + f * (H - PT - PB)} y2={PT + f * (H - PT - PB)} className="lgrid" />
+        ))}
+        <path d={area} fill={`url(#${gid})`} />
+        <line x1={0} x2={W} y1={H - PB} y2={H - PB} className="abase" />
+        {rows.map((r, i) => (
+          <g key={"axis" + r.key} aria-label={MON_L[lang][i]}>
+            <line x1={x(i)} x2={x(i)} y1={H - PB} y2={H - PB + 4} className="abase" />
+            <text x={x(i)} y={H - 10} className={"axlabel" + (i === cur ? " on" : "")}
+                  textAnchor={i === 0 ? "start" : i === rows.length - 1 ? "end" : "middle"}>
+              {i + 1}
+            </text>
+          </g>
+        ))}
+        <path className="lline" d={line} fill="none" stroke={color} strokeWidth={1.6}
+              strokeLinecap="round" strokeLinejoin="round" style={{ color }} />
+        <line x1={x(cur)} x2={x(cur)} y1={y(v[cur])} y2={H - PB} className="acur" style={{ stroke: color }} />
+        {rows.map((r, i) => (
+          <circle key={r.key} cx={x(i)} cy={y(v[i])} r={i === cur ? 3 : 1.9}
+                  className={"ldot" + (i === cur ? " on" : "")} style={{ stroke: color, ["--c" as any]: color }} />
+        ))}
+        {rows.map((r, i) => labelled.has(i) ? (
+          <text key={"v" + r.key} x={x(i)} y={y(v[i]) - 6} className={"avlab" + (i === cur ? " on" : "")}
+                textAnchor={i === 0 ? "start" : i === rows.length - 1 ? "end" : "middle"}>
+            {v[i].toFixed(dec)}
+          </text>
+        ) : null)}
+        {rows.map((r, i) => (
+          <rect key={"h" + r.key} x={i === 0 ? 0 : (x(i - 1) + x(i)) / 2} y={0}
+                width={W / (rows.length - 1) * (i === 0 || i === rows.length - 1 ? 0.5 : 1)} height={H} fill="transparent"
+                onMouseEnter={(ev) => setTip({
+                  x: ev.clientX, y: ev.clientY, title: MON_L[lang][i],
+                  rows: [{ label, value: `${v[i].toFixed(dec)} ${unit}`, color }],
+                })}
+                onMouseMove={(ev) => setTip((pv) => (pv ? { ...pv, x: ev.clientX, y: ev.clientY } : pv))}
+                onMouseLeave={() => setTip(null)} />
+        ))}
+      </svg>
     </div>
   );
 }
 
-/** Агуулга, % — Cu ба Mo, сар тус бүрээр */
-export function GradeChart() {
-  const tuv = useTuv();
-  const rows = [1, 2, 3, 4, 5, 6].map((mm) => ({
-    key: ROMAN[mm - 1], a: cuOf(mm, tuv), b: moOf(mm, tuv),
-  }));
-  return <AreaPair rows={rows} aLabel="Cu %" bLabel="Mo %" aUnit="%" bUnit="%"
-                   aDec={3} bDec={4} aColor="var(--g5)" bColor="var(--s3)" />;
-}
+const MONTHS = [1, 2, 3, 4, 5, 6];
 
-/** Металл, тонн — Cu ба Mo, сар тус бүрээр */
-export function MetalChart() {
+/* ==========================================================================
+   Элемент тус бүрийн панел — АГУУЛГА ⇄ МЕТАЛЛ солигдоно.
+   --------------------------------------------------------------------------
+   Урьд нь Cu%, Mo%, Cuт, Moт гэсэн ДӨРВӨН панел байсныг ХОЁР болгов:
+   Cu-гийн панел дотроос агуулга/металлыг сольж хардаг, Mo мөн адил.
+   Хоёр хэмжигдэхүүнийг ДАВХАРЛАХГҮЙ — Cu 0.41 % ба 12 986 т нь 30 000
+   дахин зөрөх тул нэг тэнхлэгт багтахгүй. Оронд нь ээлжлүүлнэ.
+   Панел өөрийн толгойг өөрөө зурна (гарчиг нь сонголтоор өөрчлөгдөнө).
+   ========================================================================== */
+export function ElementPanel() {
+  const { t } = useStore();
   const tuv = useTuv();
-  const rows = [1, 2, 3, 4, 5, 6].map((mm) => ({
+  /* Cu ба Mo НЭГ панелд — элементийг зүүн талын товчоор, агуулга ⇄
+     металлыг баруун талын товчоор сольно. */
+  const [el, setEl] = useState<"cu" | "mo">("cu");
+  const [mode, setMode] = useState<"grade" | "metal">("grade");
+  const isCu = el === "cu";
+
+  const rows = MONTHS.map((mm) => ({
     key: ROMAN[mm - 1],
-    a: metalSum(mm, "cut", C.NIIT, tuv),
-    b: metalSum(mm, "mot", C.NIIT, tuv),
+    v: mode === "grade"
+      ? (isCu ? cuOf(mm, tuv) : moOf(mm, tuv))
+      : metalSum(mm, isCu ? "cut" : "mot", C.NIIT, tuv),
   }));
-  return <AreaPair rows={rows} aLabel="Cu т" bLabel="Mo т" aUnit="т" bUnit="т"
-                   aDec={0} bDec={0} aColor="var(--g5)" bColor="var(--s3)" />;
+
+  const label = `${isCu ? "Cu" : "Mo"} ${mode === "grade" ? "%" : t.uT}`;
+  const dec = mode === "grade" ? (isCu ? 3 : 4) : 0;
+  const what = (mode === "grade" ? t.mGrade : t.mMetal).toLowerCase();
+
+  return (
+    <div className="panel element-panel">
+      <div className="ph">
+        <div className="seg sm eltab" role="group">
+          <button aria-pressed={isCu} onClick={() => setEl("cu")}>Cu {what}</button>
+          <button aria-pressed={!isCu} onClick={() => setEl("mo")}>Mo {what}</button>
+        </div>
+        <div className="seg sm" role="group" style={{ marginLeft: "auto" }}>
+          <button aria-pressed={mode === "grade"} onClick={() => setMode("grade")}>{t.mGrade}</button>
+          <button aria-pressed={mode === "metal"} onClick={() => setMode("metal")}>{t.mMetal}</button>
+        </div>
+      </div>
+      <div className="pb tight">
+        <AreaOne rows={rows} label={label} unit={mode === "grade" ? "%" : t.uT}
+                 dec={dec} color={isCu ? "var(--g5)" : "var(--s3)"} />
+      </div>
+    </div>
+  );
 }
 
 /* ------------------------------------------------------------ tooltip */
@@ -670,9 +640,26 @@ export function Tooltip() {
          style={{ opacity: tip ? 1 : 0, left: pos.left, top: pos.top }}>
       {tip && (
         <>
-          <span className="tt">{tip.title}</span>
+          <span className="tt">
+            {tip.title}
+            {tip.unit && <small>{tip.unit}</small>}
+          </span>
           {tip.key && <span className="tk">{tip.key}</span>}
-          {tip.rows.map((r, i) => (
+          {tip.rows.some((r) => r.pct != null) ? (
+            /* Хувьтай хувилбар: шошго · утга · хувь */
+            <div className="tshare">
+              {tip.rows.map((r, i) => (
+                <div className={"srow" + (r.total ? " tot" : "")} key={i}>
+                  <span className="sl">
+                    {r.color && <i style={{ background: r.color }} />}
+                    {r.label}
+                  </span>
+                  <b>{r.value}</b>
+                  <em>{r.pct != null ? `${r.pct.toFixed(0)} %` : ""}</em>
+                </div>
+              ))}
+            </div>
+          ) : tip.rows.map((r, i) => (
             <div className="row" key={i}>
               <span>
                 {r.color && <i style={{ background: r.color }} />}

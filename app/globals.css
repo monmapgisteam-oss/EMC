@@ -20,35 +20,39 @@
   --water:#3f7f8c;
   --good:#1f7a3d; --bad:#c0392f;
   --g1:#f4e2d1; --g2:#e6c39f; --g3:#d3a175; --g4:#bb7f4c; --g5:#9b5d2d; --g6:#7a4119;
+  /* Түвшин тус бүрийн олборлолтын баганын ганц өнгө */
+  --bench:var(--g4); --bench-base:8%; --bench-tip:78%;
   --shadow:0 1px 2px rgba(18,24,26,.06), 0 10px 30px -14px rgba(18,24,26,.22);
   --r:9px;
 }
 @media (prefers-color-scheme: dark){
   :root:not([data-theme="light"]){
     color-scheme: dark;
-    --ground:#0b1117; --surface:#121a23; --surface-2:#18222d; --sunken:#0e1620;
+    --ground:#081122; --surface:#0d1a2e; --surface-2:#13223a; --sunken:#0a1528;
     --ink:#f1f5f9; --ink-2:#a8b6c4; --ink-3:#74889a;
-    --line:#32424f; --line-soft:#263441;
+    --line:#2a3c58; --line-soft:#1c2c45;
     --accent:#e09a5e; --accent-soft:#3a2a1c; --accent-ink:#f0b482; --on-accent:#17120e;
     --ui:#2fe0c4; --ui-soft:#0f3a38; --ui-ink:#6ff0da; --on-ui:#08211d;
     --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#7d8886;
     --water:#4b93a2;
     --good:#4fae6d; --bad:#e07068;
     --g1:#6b4d2c; --g2:#86603c; --g3:#a2774c; --g4:#bd8f5f; --g5:#d8a874; --g6:#f0c493;
+    --bench:#d49a62; --bench-base:18%; --bench-tip:84%;
     --shadow:0 1px 2px rgba(0,0,0,.45), 0 10px 34px -16px rgba(0,0,0,.8);
   }
 }
 :root[data-theme="dark"]{
   color-scheme: dark;
-  --ground:#0b1117; --surface:#121a23; --surface-2:#18222d; --sunken:#0e1620;
+  --ground:#081122; --surface:#0d1a2e; --surface-2:#13223a; --sunken:#0a1528;
   --ink:#f1f5f9; --ink-2:#a8b6c4; --ink-3:#74889a;
-  --line:#32424f; --line-soft:#263441;
+  --line:#2a3c58; --line-soft:#1c2c45;
   --accent:#e09a5e; --accent-soft:#3a2a1c; --accent-ink:#f0b482; --on-accent:#17120e;
   --ui:#2fe0c4; --ui-soft:#0f3a38; --ui-ink:#6ff0da; --on-ui:#08211d;
   --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#7d8886;
   --water:#4b93a2;
   --good:#4fae6d; --bad:#e07068;
   --g1:#6b4d2c; --g2:#86603c; --g3:#a2774c; --g4:#bd8f5f; --g5:#d8a874; --g6:#f0c493;
+  --bench:#d49a62; --bench-base:18%; --bench-tip:84%;
   --shadow:0 1px 2px rgba(0,0,0,.45), 0 10px 34px -16px rgba(0,0,0,.8);
 }
 
@@ -60,28 +64,12 @@ body{margin:0;overflow:hidden;background:var(--ground);color:var(--ink);
 .mono{font-family:"IBM Plex Mono",ui-monospace,Consolas,monospace;font-variant-numeric:tabular-nums}
 
 /* ---------------- гүйлгэх зурвас ----------------
-   Картуудын доторх гүйлгэх зурвас (.rail, .dtable, .dbody) браузерын
-   анхдагч өргөн саарал хэлбэрээрээ гарч, нарийхан панелуудад бүдүүн
-   зурвас мэт дүүрч байв. Нарийн, дэвсгэргүй, зөвхөн хөдөлгүүр нь
-   харагдана. Firefox нь `scrollbar-*`, WebKit нь `::-webkit-*` дэмждэг
-   тул хоёуланг нь бичив. */
-.rail,.dtable,.dbody,.lbody,.col.scroll{scrollbar-width:thin;scrollbar-color:var(--line) transparent}
-.rail::-webkit-scrollbar,
-.dtable::-webkit-scrollbar,
-.col.scroll::-webkit-scrollbar,
-.dbody::-webkit-scrollbar{width:6px;height:6px}
-.rail::-webkit-scrollbar-track,
-.dtable::-webkit-scrollbar-track,
-.col.scroll::-webkit-scrollbar-track,
-.dbody::-webkit-scrollbar-track{background:transparent}
-.rail::-webkit-scrollbar-thumb,
-.dtable::-webkit-scrollbar-thumb,
-.col.scroll::-webkit-scrollbar-thumb,
-.dbody::-webkit-scrollbar-thumb{background:var(--line);border-radius:99px}
-.rail:hover::-webkit-scrollbar-thumb,
-.dtable:hover::-webkit-scrollbar-thumb,
-.col.scroll:hover::-webkit-scrollbar-thumb,
-.dbody:hover::-webkit-scrollbar-thumb{background:var(--ink-3)}
+   Гүйлгэх зурвасыг бүх хэсэгт нуув. Хулганы дугуй, мэдрэгч самбараар
+   гүйлгэх нь хэвээр ажиллана. Firefox нь `scrollbar-width`, WebKit нь
+   `::-webkit-scrollbar` дэмждэг тул хоёуланг нь бичив. */
+html,body,.rail,.dtable,.dbody,.lbody,.col.scroll{scrollbar-width:none;-ms-overflow-style:none}
+html::-webkit-scrollbar,body::-webkit-scrollbar,.rail::-webkit-scrollbar,.dtable::-webkit-scrollbar,
+.dbody::-webkit-scrollbar,.lbody::-webkit-scrollbar,.col.scroll::-webkit-scrollbar{display:none;width:0;height:0}
 h1,h2,h3{margin:0;font-weight:600;letter-spacing:-.01em}
 button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
 input{font:inherit}
@@ -100,21 +88,25 @@ input{font:inherit}
 @media (prefers-color-scheme: dark){
   :root:not([data-theme="light"]) .logo{filter:brightness(0) invert(1) opacity(.92)}
 }
-.brand b{font-size:13px;font-weight:700;letter-spacing:.06em;display:block;
+.brand b{font-size:17px;font-weight:700;letter-spacing:.06em;display:block;
   text-transform:uppercase;color:var(--ink)}
 .hspacer{flex:1}
-.hlabel{font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);font-weight:600}
-.months{display:flex;gap:3px}
-.months button{min-width:32px;padding:5px 5px;border-radius:6px;border:1px solid transparent;background:var(--sunken);
-  font:500 11px/1.2 "IBM Plex Mono",monospace;color:var(--ink-2);transition:.12s}
-.months button:hover{border-color:var(--line);color:var(--ink)}
-.months button[aria-pressed="true"]{background:var(--ui);color:var(--on-ui);border-color:var(--ui)}
 .seg{display:flex;background:var(--sunken);border-radius:7px;padding:2px;border:1px solid var(--line-soft)}
 /* Өнгөний горимын шилжүүлэгч — тэмдэгт нь ☀ ◐ ☾ тул тэгш дөрвөлжин */
-.seg[aria-label="Өнгөний горим"] button,
-.seg[aria-label="Colour mode"] button{min-width:28px;padding:3px 0;font-size:12px;line-height:1.2}
+/* Өнгөний горимын ганц товч — бөөрөнхий дөрвөлжин дотор нар/сар */
+.themebtn{width:30px;height:30px;display:grid;place-items:center;border-radius:8px;
+  background:var(--sunken);border:1px solid var(--line-soft);color:var(--ink-2);transition:.12s}
+.themebtn:hover{color:var(--ink);border-color:var(--line)}
+.themebtn svg{width:17px;height:17px}
+.langbtn{font:600 10.5px/1 "IBM Plex Mono",monospace;letter-spacing:.02em}
 .seg button{padding:4px 9px;border-radius:5px;font-size:10.5px;font-weight:600;color:var(--ink-3);letter-spacing:.03em}
 .seg button[aria-pressed="true"]{background:var(--surface-2);color:var(--ink)}
+/* Панелийн толгой доторх жижиг шилжүүлэгч */
+.seg.sm{padding:1px}
+.seg.sm button{padding:2px 7px;font-size:9.5px;letter-spacing:.04em}
+/* Cu / Mo сонгох товч — сонгогдсон элементийг аппын тодруулах өнгөөр */
+.seg.eltab button{text-transform:none}
+.seg.eltab button[aria-pressed="true"]{background:var(--ui-soft);color:var(--ui-ink)}
 .ghost{padding:5px 10px;border:1px solid var(--line);border-radius:7px;font-size:11.5px;color:var(--ink-2);font-weight:500}
 .ghost:hover{background:var(--sunken);color:var(--ink)}
 .ghost.sm{padding:4px 9px;font-size:11px}
@@ -126,75 +118,90 @@ input{font:inherit}
 /* Баганын өргөнийг Shell.tsx-ээс инлайнаар оноодог (чирж өөрчилнө);
    энд зөвхөн нөөц утга. */
 .main{display:grid;grid-template-columns:350px 6px minmax(0,1fr) 6px 376px;
-  gap:6px;padding:10px 12px;min-height:0}
+  gap:6px 0;padding:7px 9px;min-height:0}
 
 /* Багана хооронд чирэх бариул */
 .split{cursor:col-resize;border-radius:3px;background:transparent;transition:background .12s}
 .split:hover,body.dragging .split{background:var(--line)}
 body.dragging{cursor:col-resize;user-select:none}
 body.dragging *{pointer-events:none}
-.col{display:flex;flex-direction:column;gap:10px;min-height:0;min-width:0}
+/* Картуудын хоорондын зай — 10 -> 6 px */
+.col{display:flex;flex-direction:column;gap:6px;min-height:0;min-width:0}
 /* ГҮЙЛГЭДЭГ БАГАНА. Намхан дэлгэц дээр багана дахь панелууд нийлээд
    багтахгүй болоход `flex:1`-тэй хамгийн доод панел (түвшний карт) 0
    хүртэл шахагдаж, огт уншигдахгүй үлддэг байв. Одоо багана бүхэлдээ
    гүйлгэгдэж, ургадаг панел нь доод өндрөө хадгална. Өндөр дэлгэц дээр
    `flex-grow` хэвээр тул харагдац нь урьдын адил үлдэнэ. */
-.col.scroll{overflow-y:auto;overflow-x:hidden;scrollbar-gutter:stable}
+.col.scroll{overflow-y:auto;overflow-x:hidden}
 .col.scroll > .panel.grow{flex:1 0 auto;min-height:var(--growmin,260px)}
 .panel{background:var(--surface);border:1px solid var(--line-soft);border-radius:var(--r);
   display:flex;flex-direction:column;min-height:0;min-width:0;overflow:hidden}
-.ph{display:flex;align-items:center;gap:8px;padding:7px 11px 6px;border-bottom:1px solid var(--line-soft);flex:none}
+.ph{display:flex;align-items:center;gap:8px;padding:6px 10px 5px;border-bottom:1px solid var(--line-soft);flex:none}
 .ph h2{font-size:10.5px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--ink-2)}
 .src{margin-left:auto;font:600 8.5px/1.7 "IBM Plex Mono",monospace;letter-spacing:.06em;
   padding:1px 5px;border-radius:4px;white-space:nowrap}
 .src.live{background:var(--accent-soft);color:var(--accent-ink)}
-.pb{padding:9px 10px 10px;flex:1;min-height:0;min-width:0;display:flex;flex-direction:column}
-.pb.tight{padding:6px 7px 7px}
+.pb{padding:7px 9px 8px;flex:1;min-height:0;min-width:0;display:flex;flex-direction:column}
+.pb.tight{padding:5px 7px 6px}
 
 /* ---------------- KPI ---------------- */
 /* Дөрвөн үзүүлэлт газрын зургийн ДЭЭР, нэг мөрөнд */
-.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;flex:none}
-.kpi{background:var(--surface);border:1px solid var(--line-soft);border-radius:var(--r);padding:8px 9px 7px;min-width:0}
-/* Гарчиг БҮТНЭЭРЭЭ гарна. Өмнө нь `nowrap + ellipsis` байсан тул нарийн
-   баганад «НИЙТ ОЛБОРЛОСО…», «БАЯЖУУЛАХ ҮЙЛД…» гэж таслагдаж байв.
-   Хоёр мөр болтол өргөсөж, бүх карт ижил өндөртэй үлдэхийн тулд
-   min-height-ээр хоёр мөрийн зайг тогтоов. */
-.kpi .k{font-size:9.5px;line-height:1.35;color:var(--ink-3);font-weight:600;
-  letter-spacing:.03em;text-transform:uppercase;overflow-wrap:anywhere}
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;flex:none}
+.kpi{background:var(--surface);border:1px solid var(--line-soft);border-radius:var(--r);
+  padding:9px 10px;min-width:0;display:grid;grid-template-columns:auto minmax(0,1fr);gap:10px;align-items:center}
+/* Дүрсний хайрцаг — картын өнгөөр (--c) бүдэг дэвсгэр, тод зураас */
+.kic{width:44px;height:44px;border-radius:11px;display:grid;place-items:center;flex:none;color:var(--c);
+  background:linear-gradient(145deg,color-mix(in srgb,var(--c) 22%,transparent),color-mix(in srgb,var(--c) 6%,transparent));
+  border:1px solid color-mix(in srgb,var(--c) 30%,transparent)}
+.kic svg{width:26px;height:26px}
+.kbody{min-width:0}
+/* Гарчиг БҮТНЭЭРЭЭ гарна (таслахгүй) — нарийн баганад хоёр мөр болно */
+.kpi .k{font-size:11.5px;line-height:1.3;color:var(--ink-2);font-weight:600;
+  letter-spacing:.02em;text-transform:uppercase;overflow-wrap:anywhere}
 .kpi .v{display:flex;align-items:baseline;gap:4px;margin-top:3px}
-.kpi .v b{font:500 21px/1.05 "IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.kpi .v b{font:500 17px/1.1 "IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
 .kpi .v i{font-style:normal;font-size:9px;color:var(--ink-3)}
 .kpi .v em{font:600 9.5px/1.5 "IBM Plex Mono",monospace;font-style:normal;margin-left:auto}
 .kpi .v em.up{color:var(--good)} .kpi .v em.dn{color:var(--bad)}
-/* Дэд тайлбар — тухайн тоо ЯГ юуг хэлж байгааг заана */
-.kpi .ks{font-size:9.5px;color:var(--ui-ink);margin-top:3px;
-  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* Дэд тайлбар — картын өнгөөр будсан шошго (chip), өмнө нь цэг */
+.kpi .ks{display:inline-flex;align-items:center;gap:5px;max-width:100%;margin-top:5px;
+  padding:2px 8px 2px 6px;border-radius:99px;font-size:9.5px;line-height:1.3;
+  color:color-mix(in srgb,var(--c) 62%,var(--ink));
+  background:color-mix(in srgb,var(--c) 11%,transparent);
+  border:1px solid color-mix(in srgb,var(--c) 22%,transparent)}
+.kpi .ks i{width:5px;height:5px;border-radius:50%;background:var(--c);flex:none}
+.kpi .ks span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 
 /* ---------------- bench rail ---------------- */
 /* Хаялбарын жагсаалт — агуулгаараа. `flex:1` үед цөөн мөртэй байхад
    панелийн доор том хоосон зай үлддэг байв. */
 .rail{min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:1px}
 
-/* Түвшин тус бүрийн олборлолт — багана нь БАРУУН талын тэнхлэгээс
-   ЗҮҮН тийш ургана, хаялбарын өндөр нь баруун талд бичигдэнэ. */
-.bench{display:grid;grid-template-columns:1fr 34px;gap:8px;align-items:center;
+/* Түвшин тус бүрийн олборлолт — хаялбарын өндөр ЗҮҮН талд бичигдэж,
+   багана нь зүүн талын тэнхлэгээс БАРУУН тийш ургана. */
+.bench{display:grid;grid-template-columns:34px 1fr;gap:8px;align-items:center;
   padding:2px 4px;border-radius:4px;width:100%;text-align:left;transition:background .12s}
 .bench:hover{background:var(--sunken)}
 .bench[aria-pressed="true"]{background:var(--ui-soft)}
 .bench[aria-pressed="true"] .bl{color:var(--ui-ink);font-weight:600}
 .bench.off{opacity:.32;cursor:default;min-height:15px}
-.bwrap{display:flex;justify-content:flex-end;height:15px;
-  border-right:1px solid var(--line);padding-right:1px}
+.bwrap{display:flex;justify-content:flex-start;height:15px;
+  border-left:1px solid var(--line);padding-left:1px;
+  /* Хамгийн урт баганы тоо ч баганын урд (гадна) талд багтах зай */
+  padding-right:30px}
 .bwrap i{display:block;height:100%;min-width:2px;box-sizing:border-box;
-  border-radius:3px 0 0 3px;position:relative;
-  background:color-mix(in srgb, var(--c) 42%, transparent);
-  border:1px solid var(--c);border-right:none}
+  border-radius:0 3px 3px 0;position:relative;
+  /* Градиент: үзүүр (баруун) нь тод, суурь (зүүн тэнхлэг) руугаа бүдгэрнэ.
+     Үзүүрт 2 px-ийн тод зураас — баганын төгсгөл тод уншигдана. */
+  background:linear-gradient(to right,
+    color-mix(in srgb, var(--c) var(--bench-base), transparent),
+    color-mix(in srgb, var(--c) var(--bench-tip), transparent));
+  box-shadow:inset -2px 0 0 var(--c)}
 /* Тоо нь баганын урд үзүүрийн ГАДНА талд — багана хэдий богино байсан ч
-   уншигдана. `.in` нь зай хүрэхгүй урт баганад зориулсан хувилбар. */
-.bwrap i b{position:absolute;right:100%;margin-right:5px;top:0;
+   уншигдана. Урт баганад зай `.bwrap`-ийн padding-right-аас гарна. */
+.bwrap i b{position:absolute;left:100%;margin-left:5px;top:0;
   font:600 9px/13px "IBM Plex Mono",monospace;color:var(--ink);white-space:nowrap}
-.bwrap i b.in{right:auto;left:5px;margin-right:0}
-.bl{font:400 10px/1.5 "IBM Plex Mono",monospace;color:var(--ink-2);text-align:left}
+.bl{font:400 10px/1.5 "IBM Plex Mono",monospace;color:var(--ink-2);text-align:right}
 
 /* Cu-гийн өнгөний богино шатлал — панелийн толгойд */
 .curamp{display:inline-flex;gap:1px;margin-left:auto}
@@ -205,23 +212,45 @@ body.dragging *{pointer-events:none}
 .legend2{display:flex;gap:10px;flex-wrap:wrap;font-size:9.5px;color:var(--ink-3)}
 .legend2 span{display:inline-flex;align-items:center;gap:4px}
 .legend2 i{width:7px;height:7px;border-radius:50%}
-.lsvg{width:100%;height:104px;overflow:visible}
-.lgrid{stroke:var(--line-soft);stroke-width:1}
-.ltxt{font:400 7px/1 "IBM Plex Mono",monospace;fill:var(--ink-3)}
+.lsvg{width:100%;height:140px;overflow:visible}
+.lgrid{stroke:var(--line);stroke-width:1;stroke-dasharray:2 3;opacity:.55;vector-effect:non-scaling-stroke}
+.ltxt.on{fill:var(--ui-ink);font-weight:600}
+/* Багана+шугам чарт */
+.lbar{transition:opacity .15s}
+.lbar.dim{opacity:.28}
+.lpeak{font:600 9px/1 "IBM Plex Mono",monospace;fill:var(--ink)}
+/* Шугамын цэг — дотор нь хоосон цагираг, лавлагааны загвар шиг */
+.ldot{fill:var(--panel);stroke-width:1.3;vector-effect:non-scaling-stroke}
+.ldot.on{fill:var(--c);stroke:var(--panel)!important;stroke-width:1.5}
+/* Тайлбарын тэмдэг: багана нь градиент дөрвөлжин, шугам нь богино зураас */
+.legend2 i.sw-bar{border-radius:1px;background:linear-gradient(var(--c),color-mix(in srgb, var(--c) 15%, transparent))}
+.legend2 i.sw-line{width:12px;height:2px;border-radius:1px;background:var(--c)}
+.ltxt{font:400 9px/1 "IBM Plex Mono",monospace;fill:var(--ink-2)}
 
 /* Талбайн чарт — үзүүлэлт тус бүр ӨӨРИЙН тэнхлэгтэй */
 .achart{display:flex;flex-direction:column;gap:4px}
-.acells{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .acell{display:flex;flex-direction:column;gap:2px;min-width:0}
+/* Cu / Mo панел баруун баганад багтахгүй бол чарт нь багтах
+   хэмжээгээрээ агшиж, багана гүйлгэгдэхгүй. Хэт намхан дэлгэцэнд л
+   доод хязгаараас (min-height) хойш багана гүйлгэгдэнэ. */
+.element-panel{flex:0 1 auto;min-height:136px}
+.element-panel > .ph{flex-wrap:wrap;row-gap:5px}
+.element-panel > .pb,.element-panel .acell{flex:0 1 auto;min-height:0}
+.element-panel .ahead{flex:none}
+.element-panel .asvg{flex:0 1 auto;height:clamp(96px,12vh,128px);min-height:74px}
 .ahead{font:600 8.5px/1.4 "Golos Text",sans-serif;letter-spacing:.06em;text-transform:uppercase}
-.asvg{width:100%;height:54px;overflow:visible}
-.arange{display:flex;justify-content:space-between;
-  font:400 8.5px/1.3 "IBM Plex Mono",monospace;color:var(--ink-3)}
-.axlab{display:flex;justify-content:space-between;padding:0 2px;
-  font:400 9px/1.3 "IBM Plex Mono",monospace;color:var(--ink-3);letter-spacing:.04em}
+.asvg{width:100%;height:clamp(120px,15vh,160px);min-height:120px;flex:none;overflow:visible}
+.abase{stroke:var(--line);stroke-width:1;vector-effect:non-scaling-stroke}
+/* Цэг дээрх утгын шошго */
+.avlab{font:400 9px/1 "IBM Plex Mono",monospace;fill:var(--ink-3)}
+.avlab.on{font-weight:600;fill:var(--ink)}
+/* Сонгосон сарын босоо заагч */
+.acur{stroke-width:1;stroke-dasharray:2 2;opacity:.6;vector-effect:non-scaling-stroke}
+.axlabel{font:400 9px/1 "IBM Plex Mono",monospace;fill:var(--ink-2)}
+.axlabel.on{font-weight:600;fill:var(--ink)}
 
 /* ---------------- map ---------------- */
-.panel.map{display:grid;grid-template-rows:auto minmax(0,1fr)}
+.panel.map{display:grid;grid-template-rows:minmax(0,1fr)}
 /* ЗӨВХӨН ГАЗРЫН ЗУРАГ — дэлгэц дүүрэн. Панел нь grid-ээс салж бүх
    цонхыг эзэлнэ. Браузерын жинхэнэ Fullscreen API-г ЗОРИУД ашиглаагүй:
    тэр үед элемент «top layer» руу гардаг тул апп-ын үндэст зурагддаг
@@ -232,11 +261,44 @@ body.dragging *{pointer-events:none}
    тодорхой мэдэж байж canvas-аа зөв хэмжээгээр үүсгэдэг. flex дээр
    зураг панелаа дүүргэхгүй богино үлдэж байсан. */
 .mapwrap{position:relative;flex:1;min-height:0;background:var(--sunken)}
+.hazard-status{position:absolute;left:12px;bottom:34px;z-index:3;max-width:calc(100% - 24px);
+  display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--line);
+  border-radius:8px;background:var(--surface);color:var(--ink-2);box-shadow:var(--shadow);
+  font-size:11px;flex-wrap:wrap}
 #viewDiv{position:absolute;inset:0}
+.with-truck-strip .hazard-status{bottom:174px}
+.with-truck-strip .mmonths{bottom:174px}
+
+/* Тусгаарлах горим дахь сарын сонголт — газрын зургийн доод голд.
+   Толгойн сонголттой ижил `setM`-ийг дуудна. */
+.mmonths{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);z-index:3;
+  display:flex;gap:3px;padding:4px;border-radius:9px;
+  background:color-mix(in srgb, var(--surface) 82%, transparent);
+  border:1px solid var(--line-soft);backdrop-filter:blur(7px)}
+.mmonths button{min-width:34px;padding:6px 6px;border-radius:6px;border:1px solid transparent;
+  background:var(--sunken);font:500 11.5px/1.2 "IBM Plex Mono",monospace;
+  color:var(--ink-2);transition:.12s}
+.mmonths button:hover{border-color:var(--line);color:var(--ink)}
+.mmonths button[aria-pressed="true"]{background:var(--ui);color:var(--on-ui);border-color:var(--ui)}
 /* Тусгаарлах горим: суурь зураг, гадаргуу унтарсан үед SceneView-ийн ард
    энэ бараан дэвсгэр харагдана — питийн шатлал тод ялгарна. */
-body.isolated #viewDiv{background:#080d12}
-body.isolated .mapwrap{background:#080d12}
+body.isolated #viewDiv{background:radial-gradient(ellipse at 48% 42%,#223446 0%,#111f2d 50%,#08111b 100%)}
+body.isolated .mapwrap{background:#08111b}
+body.isolated .mmonths{padding:5px;gap:4px;border:1px solid #34495b;
+  background:rgba(13,24,36,.9);box-shadow:0 8px 24px #0003}
+body.isolated .mmonths button{background:#1c2d3d;color:#b7c6d3;border-color:transparent}
+body.isolated .mmonths button:hover{background:#2a4053;color:#f0f6fa;border-color:#4a6377}
+body.isolated .mmonths button[aria-pressed="true"]{background:#23b7a5;color:#061b20;border-color:#39c7b5}
+/* Өөрчлөлтийн товч — сарын товчнуудаас зураасаар тусгаарлана, асаалттай
+   үед улаан (гадаргуу дээрх тодруулгатай ижил өнгө) */
+.mmonths .mmsep{width:1px;align-self:stretch;margin:2px 3px;background:var(--line)}
+body.isolated .mmonths .mmsep{background:#34495b}
+.mmonths .mchg{display:flex;align-items:center;gap:6px;padding:6px 9px;font-family:"Golos Text",sans-serif;font-weight:600}
+.mmonths .mchg i{width:9px;height:9px;border-radius:2px;background:#e3342c;opacity:.45}
+.mmonths .mchg small{font:500 10.5px/1 "IBM Plex Mono",monospace;opacity:.85}
+.mmonths .mchg:disabled{opacity:.45;cursor:not-allowed}
+body.isolated .mmonths .mchg[aria-pressed="true"]{background:#4a1c1c;color:#ffd9d6;border-color:#e3342c}
+.mmonths .mchg[aria-pressed="true"] i{opacity:1}
 body.isolated .gradekey{background:rgba(11,17,23,.92);border-color:#263441;color:#a8b6c4}
 
 .esri-view-surface--inset-outline:focus::after{outline:none !important}
@@ -260,6 +322,44 @@ body.isolated .gradekey{background:rgba(11,17,23,.92);border-color:#263441;color
 .esri-ui .esri-zoom .esri-widget--button:first-child{border-radius:7px 7px 0 0}
 .esri-ui .esri-zoom .esri-widget--button:last-child{border-radius:0 0 7px 7px}
 .esri-ui .esri-component{box-shadow:none !important}
+/* Esri-ийн Calcite товчнууд (навигацийн идэвхтэй товч, суурь зургийн
+   Expand) өнгөө shadow DOM дотор Calcite-ийн хувьсагчаас авдаг тул дээрх
+   дүрэм хүрдэггүй — харанхуй горимд ЦАГААН дэвсгэртэй үлддэг байв.
+   Esri эдгээр хувьсагчийг газрын зургийн элемент дээр цайвар утгаар дахин
+   тодорхойлдог тул :root-д биш, Calcite элемент дээр ШУУД тавина
+   (shadow DOM руу удамшина). Цайвар горимд хүрэхгүй. */
+:root[data-theme="dark"] .esri-ui calcite-button,
+:root[data-theme="dark"] .esri-ui calcite-action,
+:root[data-theme="dark"] .esri-ui .esri-expand__content-container{
+  --calcite-color-foreground-1:var(--surface); --calcite-color-foreground-2:var(--surface-2);
+  --calcite-color-foreground-3:var(--sunken); --calcite-color-background:var(--ground);
+  --calcite-color-text-1:var(--ink); --calcite-color-text-2:var(--ink-2); --calcite-color-text-3:var(--ink-3);
+  --calcite-color-border-1:var(--line); --calcite-color-border-2:var(--line-soft); --calcite-color-border-3:var(--line-soft);
+  --calcite-color-border-input:var(--line);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]) .esri-ui calcite-button,
+  :root:not([data-theme="light"]) .esri-ui calcite-action,
+  :root:not([data-theme="light"]) .esri-ui .esri-expand__content-container{
+  --calcite-color-foreground-1:var(--surface); --calcite-color-foreground-2:var(--surface-2);
+  --calcite-color-foreground-3:var(--sunken); --calcite-color-background:var(--ground);
+  --calcite-color-text-1:var(--ink); --calcite-color-text-2:var(--ink-2); --calcite-color-text-3:var(--ink-3);
+  --calcite-color-border-1:var(--line); --calcite-color-border-2:var(--line-soft); --calcite-color-border-3:var(--line-soft);
+  --calcite-color-border-input:var(--line);
+  }
+}
+/* Газрын зургийн өөрсдийн товчнууд (MineScene.tsx) — зумын бүлэг шиг
+   нэг багана, дээд/доод булан бөөрөнхий */
+.mapbtns{display:flex;flex-direction:column}
+.mapbtns .esri-widget--button{width:32px;height:32px;display:grid;place-items:center;
+  border:1px solid var(--line-soft);border-radius:0;cursor:pointer;padding:0}
+.mapbtns .esri-widget--button + .esri-widget--button{border-top:0}
+.mapbtns .esri-widget--button:first-child{border-radius:7px 7px 0 0}
+.mapbtns .esri-widget--button:last-child{border-radius:0 0 7px 7px}
+.mapbtns svg{width:17px;height:17px}
+/* Асаалттай төлөв — аппын тодруулах өнгөөр */
+.esri-ui .mapbtns .esri-widget--button[aria-pressed="true"]{color:var(--ui) !important;
+  background:color-mix(in srgb, var(--ui) 16%, var(--surface)) !important}
 .esri-ui .esri-compass__rotation-container,
 .esri-ui .esri-navigation-toggle__rotation-container{color:inherit}
 
@@ -302,6 +402,95 @@ body.isolated .gradekey{background:rgba(11,17,23,.92);border-color:#263441;color
 /* Квантилийн завсруудыг ЗААГ дээр нь тавина (16.7 %, 33.3 % ... ) */
 .rax{position:relative;height:11px;font:400 8.5px/1.3 "IBM Plex Mono",monospace;color:var(--ink-3)}
 .rax b{position:absolute;top:0;font-weight:400;transform:translateX(-50%);white-space:nowrap}
+/* Олборлосон блокийн тайлбар — сарын товчны баруун талд, доод буланд */
+.blkkey{width:262px;gap:5px;padding:8px 10px}
+.blksum{font:400 10.5px/1.4 "IBM Plex Mono",monospace;color:var(--ink-2)}
+.blksum b{color:var(--ink);font-weight:600}
+.blkrow{display:grid;grid-template-columns:10px 112px 1fr 34px;align-items:center;gap:6px;
+  font:400 10px/1.3 "IBM Plex Mono",monospace;color:var(--ink-2)}
+.blkrow i{width:10px;height:10px;border-radius:2px}
+.blkrow em{font-style:normal;white-space:nowrap}
+.blkrow s{display:block;height:5px;border-radius:3px;opacity:.8;min-width:2px}
+.blkrow b{font-weight:500;text-align:right;color:var(--ink)}
+.blknote{font-size:9.5px;color:var(--ink-3);line-height:1.35}
+body.isolated .blksum,body.isolated .blkrow{color:#a8b6c4}
+body.isolated .blksum b,body.isolated .blkrow b{color:#e6edf3}
+/* Block-model legend: a stable dark surface keeps all five grade colours legible. */
+.block-legend{position:absolute;right:12px;bottom:64px;z-index:2;width:284px;max-width:calc(100% - 24px);
+  max-height:calc(100% - 80px);overflow-y:auto;scrollbar-width:none;
+  padding:12px 13px 9px;border:1px solid #344352;border-radius:12px;background:rgba(15,24,33,.96);
+  color:#eaf0f5;box-shadow:0 9px 26px #0005,0 1px 3px #0003;
+  -webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);font-family:"Golos Text",sans-serif}
+.block-legend .block-legend__header{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.block-legend .block-legend__header>div{flex:1;min-width:0}
+/* Нуух / дэлгэх товч */
+.block-legend .block-legend__toggle{flex:none;display:grid;place-items:center;width:26px;height:26px;padding:0;
+  border:1px solid #3a4a59;border-radius:5px;background:#24313e;color:#c9d5df;cursor:pointer;transition:.12s}
+.block-legend .block-legend__toggle:hover{color:#fff;border-color:#55687a}
+.block-legend .block-legend__toggle svg{width:14px;height:14px}
+.block-legend .block-legend__body[hidden]{display:none}
+.block-legend.block-legend--collapsed{padding-bottom:12px}
+.block-legend .block-legend__eyebrow{display:block;margin-bottom:3px;color:#93a5b5;font-size:9px;font-weight:600;letter-spacing:.1em;line-height:1.3}
+.block-legend .block-legend__header h3{margin:0;color:#f2f6fa;font-size:13px;font-weight:600;letter-spacing:0;line-height:1.3}
+.block-legend .block-legend__period{flex:none;padding:5px 7px;border:1px solid #3a4a59;border-radius:5px;background:#24313e;
+  color:#c4d2df;font:500 10px/1 "IBM Plex Mono",monospace;white-space:nowrap}
+.block-legend .block-legend__metrics{display:grid;grid-template-columns:1.16fr 1fr;gap:10px;margin:10px 0 10px;padding:0 0 8px;border-bottom:1px solid #2c3946}
+.block-legend .block-legend__metrics>div{min-width:0}
+.block-legend .block-legend__metrics>div+div{border-left:1px solid #2c3946;padding-left:10px}
+.block-legend .block-legend__metrics dt{margin:0 0 4px;color:#a1b0bd;font-size:10px;line-height:1.3}
+.block-legend .block-legend__metrics dd{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px;margin:0;color:#f3f7fa;font-size:20px;line-height:1.15;font-weight:600;letter-spacing:-.5px;font-variant-numeric:tabular-nums}
+.block-legend .block-legend__metrics dd small{color:#97a9b9;font-size:9.5px;font-weight:400;letter-spacing:0}
+.block-legend .block-legend__columns{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:5px;color:#94a6b7;font-size:9.5px;line-height:1.4}
+.block-legend .block-legend__classes{display:flex;flex-direction:column;gap:0;margin:0;padding:0;list-style:none}
+.block-legend .block-legend__class{display:grid;grid-template-columns:10px minmax(0,1fr) 46px 42px;gap:7px;align-items:center;min-height:24px;padding:3px 0;
+  color:#c3d0dc;font:400 10.5px/1.35 "IBM Plex Mono",monospace;font-variant-numeric:tabular-nums}
+.block-legend .block-legend__swatch{display:block;width:10px;height:10px;border-radius:2px;box-shadow:inset 0 0 0 1px #ffffff24}
+.block-legend .block-legend__range{display:block;white-space:nowrap}
+.block-legend .block-legend__range small{display:block;margin-top:2px;color:#8d9eae;font:400 9px/1.2 "Golos Text",sans-serif}
+.block-legend .block-legend__track{display:block;height:4px;border-radius:3px;background:#2d3946;overflow:hidden}
+.block-legend .block-legend__track>span{display:block;height:100%;border-radius:inherit}
+.block-legend .block-legend__share{color:#e4edf5;text-align:right;font-size:10.5px;white-space:nowrap}
+/* Хугацаа ба зүсэлтийн сонголт */
+.block-legend .block-legend__label{display:flex;justify-content:space-between;align-items:center;gap:8px;
+  margin:10px 0 5px;color:#94a6b7;font-size:9.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase}
+.block-legend .block-legend__label b{color:#eaf0f5;font:500 10.5px/1 "IBM Plex Mono",monospace;letter-spacing:0;text-transform:none}
+.block-legend .block-legend__label--slice{margin-top:8px;padding-top:9px;border-top:1px solid #2c3946}
+.block-legend .block-legend__link{padding:0;border:0;background:none;color:#5fd3c3;font:500 10px/1.2 "Golos Text",sans-serif;
+  letter-spacing:0;text-transform:none;cursor:pointer}
+.block-legend .block-legend__link:hover{text-decoration:underline}
+.block-legend .block-legend__periods,.block-legend .block-legend__seg{display:grid;gap:3px;padding:2px;border-radius:7px;background:#1b2632;border:1px solid #2c3946}
+.block-legend .block-legend__periods{grid-template-columns:repeat(5,1fr);margin-bottom:2px}
+.block-legend .block-legend__seg{grid-template-columns:repeat(4,1fr)}
+.block-legend .block-legend__periods button,.block-legend .block-legend__seg button{position:relative;padding:5px 2px;border:0;border-radius:5px;
+  background:none;color:#a9b8c5;font:500 10px/1.2 "IBM Plex Mono",monospace;white-space:nowrap;cursor:pointer;transition:.12s}
+.block-legend .block-legend__seg button{font-family:"Golos Text",sans-serif;font-size:10.5px}
+.block-legend .block-legend__periods button:hover,.block-legend .block-legend__seg button:hover{color:#f0f6fa;background:#24313e}
+.block-legend .block-legend__periods button[aria-pressed="true"],.block-legend .block-legend__seg button[aria-pressed="true"]{background:#23b7a5;color:#061b20;font-weight:600}
+/* Толгойн сонгосон сартай таарах хугацаа — доор жижиг цэг */
+.block-legend .block-legend__periods button.is-month::after{content:"";position:absolute;left:50%;bottom:1px;width:3px;height:3px;
+  margin-left:-1.5px;border-radius:50%;background:currentColor;opacity:.8}
+.block-legend .block-legend__slice{display:flex;flex-direction:column;gap:6px;margin-top:7px}
+.block-legend .block-legend__slice input[type="range"]{width:100%;accent-color:#23b7a5}
+.block-legend .block-legend__slice label{display:flex;align-items:center;gap:6px;color:#b9c7d3;font-size:10.5px;cursor:pointer}
+.block-legend .block-legend__slice input[type="checkbox"]{accent-color:#23b7a5;margin:0}
+.block-legend .block-legend__footer{display:flex;justify-content:space-between;gap:8px;margin-top:6px;padding-top:8px;border-top:1px solid #2c3946;color:#8296a9;font-size:9.5px;line-height:1.35;font-variant-numeric:tabular-nums}
+.block-legend .block-legend__missing{display:flex;flex-direction:column;align-items:flex-start;gap:8px;padding-top:17px}
+.block-legend .block-legend__missing svg{color:#72899c}
+.block-legend .block-legend__missing strong{color:#dce6ee;font-size:12px;font-weight:500;line-height:1.4}
+.block-legend .block-legend__missing p{margin:0 0 2px;color:#94a8ba;font-size:10.5px;line-height:1.6}
+@media(max-width:800px),(max-height:650px){
+  .block-legend{right:10px;bottom:62px;padding:11px 12px 9px}
+  .block-legend .block-legend__metrics{margin-top:8px;margin-bottom:8px;padding-bottom:8px}
+  .block-legend .block-legend__class{min-height:23px;padding:3px 0}
+  .block-legend .block-legend__footer{margin-top:5px;padding-top:7px}
+}
+@media(max-width:800px){.block-legend{width:228px}}
+@media(max-width:420px){
+  .block-legend{right:8px;bottom:62px;width:218px;max-width:calc(100% - 16px)}
+  .block-legend .block-legend__class{grid-template-columns:10px minmax(0,1fr) 36px 42px;gap:6px}
+  .block-legend .block-legend__metrics{grid-template-columns:1.13fr 1fr;gap:7px}
+  .block-legend .block-legend__metrics>div+div{padding-left:7px}
+}
 .rlegoff{display:flex;align-items:center;gap:6px;font-size:9.5px;color:var(--ink-3);margin-top:2px}
 .rlegoff i{width:10px;height:8px;border-radius:2px;background:var(--s4);opacity:.5;flex:none}
 
@@ -339,14 +528,14 @@ body.isolated .gradekey{background:rgba(11,17,23,.92);border-color:#263441;color
   flex:none;min-width:32px;text-align:right}
 
 /* Чиглэл тус бүрийн хуваарилалт */
-.drow2{display:grid;grid-template-columns:1fr 64px 46px 30px;gap:7px;align-items:center;
+.drow2{display:grid;grid-template-columns:1fr 64px 46px 36px;gap:7px;align-items:center;
   padding:2px;border-radius:4px}
 .drow2:hover{background:var(--sunken)}
 .dlab2{font-size:11px;color:var(--ink-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .drow2 .dval{font-size:10px;color:var(--ink);min-width:0}
-.dpct{font:400 9.5px/1.4 "IBM Plex Mono",monospace;color:var(--ink-3);text-align:right}
-.drow2.tot{margin-top:3px;padding-top:5px;border-top:1px solid var(--line-soft)}
-.drow2.tot .dlab2{color:var(--ink-3)}
+.dpct{font:400 9.5px/1.4 "IBM Plex Mono",monospace;color:var(--ink-3);text-align:right;white-space:nowrap}
+/* Хоосон чулуулаг (мян.м³) — тонны мөрүүдээс зураасаар тусгаарлана */
+.drow2.m3{margin-top:4px;padding-top:6px;border-top:1px dashed var(--line-soft);border-radius:0 0 4px 4px}
 /* Сонгогдсон хүлээн авагчийг чиглэлийн чарт дээр тодруулна. `:hover`-ээс
    ХОЙНО бичив — эс тэгвэл ижил жинтэй тул дүүжлэх өнгө нь дарж орхино. */
 .drow2.on{background:var(--ui-soft);border-radius:5px}
@@ -428,18 +617,6 @@ tr.sum td{font-weight:600;border-top:1px solid var(--line);border-bottom:none;co
 .mbar{position:absolute;left:0;top:0;height:100%;display:flex;gap:2px;min-width:4px}
 .mbar i{display:block;height:100%;border-radius:2px}
 
-/* Сонгосон сарын задаргаа — тайлбар ба тоог нэг дор */
-.tlbd{margin-top:10px;padding-top:8px;border-top:1px solid var(--line-soft);
-  display:flex;flex-direction:column;gap:4px}
-.tlbh{font:600 8.5px/1.4 "Golos Text",sans-serif;letter-spacing:.06em;
-  text-transform:uppercase;color:var(--ink-3);margin-bottom:1px}
-.tlb{display:grid;grid-template-columns:10px 1fr auto 40px;gap:7px;align-items:center}
-.tlb i{width:10px;height:10px;border-radius:2px;flex:none}
-.tlbn{font-size:10.5px;color:var(--ink-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.tlbv{font:500 10.5px/1.5 "IBM Plex Mono",monospace;color:var(--ink);text-align:right}
-.tlbp{font:400 9.5px/1.5 "IBM Plex Mono",monospace;color:var(--ink-3);text-align:right}
-.tlb.tot{margin-top:2px;padding-top:5px;border-top:1px solid var(--line-soft)}
-.tlb.tot .tlbn{color:var(--ink-3)}
 .mv{font:400 9.5px/1.5 "IBM Plex Mono",monospace;color:var(--ink-3);
   flex:none;width:44px;text-align:right}
 .mrow[aria-pressed="true"] .mv{color:var(--ink)}
@@ -474,6 +651,20 @@ tr.sum td{font-weight:600;border-top:1px solid var(--line);border-bottom:none;co
 #tip .row span{display:inline-flex;align-items:center;gap:6px;color:var(--ink-2)}
 #tip .row i{width:8px;height:8px;border-radius:2px;flex:none}
 #tip .row b{font:500 11px/1 "IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;color:var(--ink)}
+/* Толгойн баруун талд нэгж */
+#tip .tt{display:flex;align-items:baseline;justify-content:space-between;gap:12px}
+#tip .tt small{font:500 9.5px/1 "IBM Plex Mono",monospace;color:var(--ink-3);font-weight:500}
+/* Хувьтай хувилбар — илүү өргөн карт, гурван багана */
+#tip:has(.tshare){min-width:250px;max-width:320px;padding:10px 12px}
+#tip .tshare{display:flex;flex-direction:column;gap:6px;margin-top:2px}
+#tip .srow{display:grid;grid-template-columns:minmax(0,1fr) auto 38px;align-items:center;column-gap:10px;row-gap:4px}
+#tip .srow .sl{display:flex;align-items:center;gap:7px;color:var(--ink-2);line-height:1.3}
+#tip .srow .sl i{width:9px;height:9px;border-radius:2px;flex:none}
+#tip .srow b{font:600 11.5px/1 "IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;color:var(--ink);text-align:right}
+#tip .srow em{font:500 10.5px/1 "IBM Plex Mono",monospace;font-style:normal;color:var(--ink-3);text-align:right}
+#tip .srow.tot{margin-top:2px;padding-top:8px;border-top:1px solid var(--line-soft)}
+#tip .srow.tot .sl{color:var(--ink);font-weight:600}
+#tip .srow.tot b{font-size:12.5px}
 #tip .hintline{display:block;margin-top:5px;padding-top:5px;border-top:1px solid var(--line-soft);
   font-size:9.5px;color:var(--ink-3)}
 
@@ -492,9 +683,30 @@ tr.sum td{font-weight:600;border-top:1px solid var(--line);border-bottom:none;co
    `color-mix` нь `var(--g5)` гэх мэт хувьсагчийг ч зөв тооцдог.
    `box-sizing:border-box` — 1 px тойрог баганын өргөнийг өсгөхгүй.
    `min-width` нь тойрог хоёр тал нийлж шугам болохоос сэргийлнэ. */
-.bbar i,.dbar i,.mbar i,.tlb i{
+.bbar i,.dbar i,.mbar i{
   box-sizing:border-box;
-  background:color-mix(in srgb, var(--c) 16%, transparent);
-  border:1px solid var(--c)}
+  background:linear-gradient(to right,
+    color-mix(in srgb, var(--c) 10%, transparent),
+    color-mix(in srgb, var(--c) 72%, transparent));
+  box-shadow:inset -2px 0 0 var(--c)}
+/* Тайлбарын дөрвөлжин — градиент тэмдэг */
+.tlb i{
+  box-sizing:border-box;
+  background:linear-gradient(to right,
+    color-mix(in srgb, var(--c) 15%, transparent),
+    var(--c))}
 .mbar i,.bbar i,.dbar i{min-width:3px}
 .tlb i.none{background:none;border-color:transparent}
+
+/* ---------------- бараан горимын гэрэлтэлт ----------------
+   Шугамууд бараан дэвсгэр дээр зөөлөн гэрэлтэнэ (лавлагааны загвар шиг).
+   Гэрэл горимд гэрэлтэлт нь бохир сүүдэр мэт харагддаг тул зөвхөн
+   бараан горимд. Өнгө нь `color` (= цувралын өнгө)-оос авна. */
+:root[data-theme="dark"] .lline{filter:drop-shadow(0 0 3px currentColor)}
+:root[data-theme="dark"] .mbar i,
+:root[data-theme="dark"] .dbar i{box-shadow:inset -2px 0 0 var(--c),0 0 6px -1px color-mix(in srgb, var(--c) 55%, transparent)}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]) .lline{filter:drop-shadow(0 0 3px currentColor)}
+  :root:not([data-theme="light"]) .mbar i,
+  :root:not([data-theme="light"]) .dbar i{box-shadow:inset -2px 0 0 var(--c),0 0 6px -1px color-mix(in srgb, var(--c) 55%, transparent)}
+}

@@ -6,11 +6,17 @@
    ========================================================================== */
 
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import Map from "@arcgis/core/Map";
 import Basemap from "@arcgis/core/Basemap";
 import BasemapGallery from "@arcgis/core/widgets/BasemapGallery";
+import DirectLineMeasurement3D from "@arcgis/core/widgets/DirectLineMeasurement3D";
+import AreaMeasurement3D from "@arcgis/core/widgets/AreaMeasurement3D";
 import Expand from "@arcgis/core/widgets/Expand";
 import SceneView from "@arcgis/core/views/SceneView";
+import SliceAnalysis from "@arcgis/core/analysis/SliceAnalysis";
+import SlicePlane from "@arcgis/core/analysis/SlicePlane";
+import VirtualLighting from "@arcgis/core/views/3d/environment/VirtualLighting";
 import SceneLayer from "@arcgis/core/layers/SceneLayer";
 import IntegratedMeshLayer from "@arcgis/core/layers/IntegratedMeshLayer";
 import FeatureLayer from "@arcgis/core/layers/FeatureLayer";
@@ -21,6 +27,10 @@ import Graphic from "@arcgis/core/Graphic";
 import Mesh from "@arcgis/core/geometry/Mesh";
 import Point from "@arcgis/core/geometry/Point";
 import * as wmUtils from "@arcgis/core/geometry/support/webMercatorUtils";
+import * as geodeticDensifyOperator from "@arcgis/core/geometry/operators/geodeticDensifyOperator";
+import Polyline from "@arcgis/core/geometry/Polyline";
+import * as reactiveUtils from "@arcgis/core/core/reactiveUtils";
+import { executeForIds, executeQueryJSON } from "@arcgis/core/rest/query";
 import esriConfig from "@arcgis/core/config";
 
 import { useStore } from "@/lib/store";
@@ -35,24 +45,53 @@ import {
   type Dest, type Truck,
 } from "@/lib/flow";
 import { fmt, hex, num1 } from "@/lib/format";
+import { createTailings, type TailingsFlow } from "@/lib/tailings";
+import {
+  BLOCK_TEXT, NO_SLICE, blockAt, buildBlockMesh, loadBlockData,
+  type BlockData, type BlockModelMeta, type BlockSlice,
+} from "@/lib/blockModel";
+import { pitColors, type PitColors } from "@/lib/pitSurface";
+import { compileHazardZones, hazardLevelAt, type HazardIndex } from "@/lib/hazards";
+import { createHazardAlerts, type HazardAlerts } from "@/lib/hazardAlerts";
+import { buildTruckTelemetry, type TruckTelemetry, type TerrainElevationSample } from "@/lib/truckTelemetry";
+import { placeExcavators } from "@/lib/excavators";
+import BlockLegend from "./BlockLegend";
+import TruckTelemetryStrip from "./TruckTelemetryStrip";
+import TailingsInspector from "./TailingsInspector";
 
 /** @arcgis/core-ийн assets-ыг node_modules-оос хуулахгүйгээр CDN-ээс авна */
 esriConfig.assetsPath = "https://js.arcgis.com/4.34/@arcgis/core/assets";
 
-/** Хаягдлын хоолой */
-/* Гүн ба диаметрийг бодит хэмжээнээс ТОМРУУЛСАН: 4.4 км урт коридорыг
-   бүтнээр нь харах зумд (≈2.5 м/пиксел) 6 м-ийн хоолой 2 пиксел болж,
-   хагас тунгалаг гадаргуугаар огт уншигдахгүй байв. */
-const TAIL_DEPTH = 12;     // гүн, м (гадаргуугаас доош)
-const PIPE_D = 14;         // хоолойн диаметр, м
-/* ҮҮРЛЭСЭН байх ёстой: долгион < цөм < бүрхүүл. Урьд нь долгион (10.5)
-   цөмөөс (8.5) ТОМ байсан тул хоолойн гадуур цухуйж, ирмэг нь тасархай
-   ширүүн харагдаж байв. */
-const FLOW_D = 8.5;        // тасралтгүй усны цөмийн диаметр, м
-const WAVE_D = 5.5;        // хөдөлж буй долгионы диаметр, м (цөмөөс НАРИЙН)
-const FLOW_SEG = 150;      // нэг долгионы урт, м
+/* «Зөвхөн уурхай» горимд тээврийн замыг сарын мэш дээр наах тохиргоо.
+   ROAD_STEP: замын цэгүүдийн хоорондох хамгийн их зай. Мэшийн тор 5 м
+   тул түүнээс нягт авбал зам шатлалыг огтлохгүй дагана.
+   ROAD_LIFT: мэшийн гадаргуугаас дээш өргөх өндөр. Яг гадаргуу дээр
+   зурвал шугам мэштэй гүнээрээ тэнцэж тасархай харагдана. */
+const ROMAN = ["", "I", "II", "III", "IV", "V", "VI"];
+/** Аюулын түвшин 1/2/3-ын өнгө (HAZARD_MAP сервисийн өнгөнөөс) */
+const HAZARD_COLORS = ["#8bd12f", "#f5a524", "#e8413a"];
+const ROAD_STEP = 4;      // м
+/* Блокийн оройн өнгийг (Cu ангилал) цагаанаар үржүүлж хэвээр харуулна;
+   нимгэн бараан ирмэг нь 5 м-ийн нүд бүрийг ялгана. */
+const BLOCK_SYMBOL = {
+  type: "mesh-3d",
+  symbolLayers: [{ type: "fill",
+    material: { color: [255, 255, 255, 1], colorMixMode: "multiply" },
+    edges: { type: "solid", color: [10, 18, 26, 0.45], size: 0.5 } }],
+} as any;
+const ROAD_LIFT = 1.5;    // м
+const TAIL_DEPTH = 30;     // төв тэнхлэгийн гүн, м (гадаргуугаас доош)
+const PIPE_D = 2;          // хоолойн диаметр, м
 
 interface MeshInfo { url: string; lon: number; lat: number; z: number }
+type HeightSampler = (lon: number, lat: number) => number;
+
+/** WGS84-ийн муруйлтын радиусаар lon/lat-ийн нэг градусын метр (зүүн, хойд) */
+function enuScale(lat: number): [number, number] {
+  const A = 6378137, E2 = 0.00669437999014, R = Math.PI / 180;
+  const sl = Math.sin(lat * R), w = 1 - E2 * sl * sl;
+  return [R * (A / Math.sqrt(w)) * Math.cos(lat * R), R * (A * (1 - E2) / (w * Math.sqrt(w)))];
+}
 
 /**
  * Контейнерийн өндөр хоёр кадр дараалан тогтвортой болтол хүлээнэ.
@@ -90,36 +129,93 @@ function waitStableSize(el: HTMLElement, timeoutMs = 2000): Promise<void> {
 
 export default function MineScene() {
   const store = useStore();
-  const { m, lang, t, toggleDest, clearAll, setTip, mapMax, setMapMax } = store;
+  const { m, setM, lang, t, toggleDest, clearAll, setTip, mapMax, setMapMax } = store;
 
   const divRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<SceneView | null>(null);
   const mapRef = useRef<Map | null>(null);
   const layersRef = useRef<Record<string, any>>({});
-  const meshCache = useRef<Record<number, Mesh>>({});
+  const meshLoad = useRef<Record<number, Promise<Mesh | null>>>({});
+  /* Сарын гадаргуугийн өнгө (байгалийн + өөрчлөлт) — нэг удаа тооцно */
+  const pitColorCache = useRef<Record<number, PitColors>>({});
+  /* Сар бүрийн мэш дээр наасан замын геометр (тооцоо удаан тул нэг удаа) */
+  const roadIsoCache = useRef<Record<number, Promise<Polyline[]>>>({});
+  const heightGridCache = useRef<Record<number, Promise<HeightSampler | null>>>({});
+  const telemetryTerrain = useRef<{ month: number; sample: HeightSampler | null } | null>(null);
+  /* «Зөвхөн уурхай» горим асаалттай эсэх — ArcGIS-ийн watch дотор
+     React-ийн төлөв хуучирдаг тул ref-ээр уншина */
+  const isoRef = useRef(false);
   const bldCache = useRef<Record<string, any>>({});
   const meshInfo = useRef<Record<string, MeshInfo>>({});
+  const blockInfo = useRef<BlockModelMeta | null>(null);
+  const blockCache = useRef<Record<number, Promise<BlockData>>>({});
+  const blockReq = useRef(0);
+  const blockFrame = useRef<number | null>(null);
   /* Сонгогдсон сар / хэл нь event handler дотор шинэ утгаараа хэрэгтэй */
-  const stateRef = useRef({ m, lang });
-  stateRef.current = { m, lang };
+  const stateRef = useRef({ m, lang, t, mapMax });
+  stateRef.current = { m, lang, t, mapMax };
+  const clearHover = useRef<(() => void) | null>(null);
 
   const [ready, setReady] = useState(false);
+  /* Газрын зургийн зүүн дээд буланд (суурь зургийн дүрсийн доор) суух
+     товчнуудын сав. ArcGIS-ийн UI-д `view.ui.add`-аар нэмж, доторх
+     товчнуудыг React portal-аар зурна. Компонент зөвхөн хөтөч дээр
+     ажилладаг (ssr: false) тул `document` бэлэн байна. */
+  const [btnHost] = useState(() => {
+    const d = document.createElement("div");
+    d.className = "mapbtns esri-component";
+    return d;
+  });
   const [isolated, setIsolated] = useState(false);
+  const [hasBlocks, setHasBlocks] = useState(false);
+  /* Блок загварын хугацаа: null — толгойн сартай хамт солигдоно, тоо —
+     хэрэглэгч өөр сарын блокийг тогтоож сонгосон (сар солиход хэвээр). */
+  const [blkPeriod, setBlkPeriod] = useState<number | null>(null);
+  const [blkSlice, setBlkSlice] = useState<BlockSlice>(NO_SLICE);
+  /* Өмнөх сараас өөрчлөгдсөн гадаргууг улаанаар харуулах эсэх */
+  const [pitChange, setPitChange] = useState(true);
+  const [changeHa, setChangeHa] = useState<number | null>(null);
+  const blkRef = useRef({ period: blkPeriod, slice: blkSlice, change: pitChange });
+  blkRef.current = { period: blkPeriod, slice: blkSlice, change: pitChange };
   const [layersOpen, setLayersOpen] = useState(false);
   const [groundStep, setGroundStep] = useState(0);
+  const [tailInspect, setTailInspect] = useState(false);
+  const [tailStatus, setTailStatus] = useState<"loading" | "ready" | "error">("loading");
+  const [tailTransparency, setTailTransparency] = useState(0);
+  const [tailSliced, setTailSliced] = useState(false);
+  const tailSlice = useRef<SliceAnalysis | null>(null);
+  const tailFocusRequest = useRef(0);
+  const tailTransparencyRef = useRef(tailTransparency);
+  tailTransparencyRef.current = tailTransparency;
+  const tailInspection = useRef<{
+    camera: SceneView["camera"]; groundOpacity: number; tailsVisible: boolean;
+  } | null>(null);
   const [pitUrl, setPitUrl] = useState("");
   const [pitMsg, setPitMsg] = useState<{ text: string; cls: string }>({ text: "", cls: "" });
   const [visible, setVisible] = useState<Record<string, boolean>>({});
-  const flowTimer = useRef<number | null>(null);
+  const [hazardStatus, setHazardStatus] = useState<"loading" | "ready" | "error">("loading");
+  const hazardStatusRef = useRef(hazardStatus);
+  hazardStatusRef.current = hazardStatus;
+  const [truckTelemetry, setTruckTelemetry] = useState<TruckTelemetry[]>([]);
+  const [selectedTruck, setSelectedTruck] = useState<number | null>(null);
+  const truckFocusRequest = useRef(0);
+  const hazardZones = useRef<HazardIndex>([]);
+  const hazardAlerts = useRef<HazardAlerts | null>(null);
+  const hazardAbort = useRef<AbortController | null>(null);
+  const flowFrame = useRef<number | null>(null);
   const simRef = useRef<FlowSim | null>(null);
   const destsRef = useRef<Dest[]>([]);
   const parkedRef = useRef<Truck[]>([]);
   /* Байнгын Graphic обьектууд — давталт бүрт ДАХИН ҮҮСГЭХГҮЙ (анивчихаас сэргийлнэ) */
   const truckGfx = useRef<Graphic[]>([]);
   const truckKey = useRef<string[]>([]);
+  const excavatorGfx = useRef<Graphic[]>([]);
+  const excavatorScale = useRef(0);
   const prevBasemap = useRef<Basemap | null>(null);
-  const tailGfx = useRef<Graphic[]>([]);
-  const tailPath = useRef<{ lon: number; lat: number; z: number }[]>([]);
+  const prevEnvironment = useRef<Pick<SceneView["environment"],
+    "background" | "lighting" | "atmosphereEnabled" | "starsEnabled"> | null>(null);
+  const tailFlow = useRef<TailingsFlow | null>(null);
+  const tailAbort = useRef<AbortController | null>(null);
 
   /* --------------------------------------------------------- эхлүүлэх */
   useEffect(() => {
@@ -133,6 +229,7 @@ export default function MineScene() {
     });
 
     function init() {
+    let disposeHover: (() => void) | undefined;
 
     /** Одоогийн өнгөний горим. `data-theme` байхгүй бол ҮС-ийн тохиргоо. */
     const isDark = () => {
@@ -173,6 +270,23 @@ export default function MineScene() {
       elevationInfo: { mode: "on-the-ground" },
       /* Далангийн сервис 2024/01-ээс эхэлдэг — 2023 оны мөр байхгүй */
       definitionExpression: "Date = '2024/01'",
+    });
+
+    /* АЮУЛЫН БҮСИЙН ЗУРАГ — `code` 1/2/3. Сервисийн өнгийг (ногоон, улбар
+       шар, улаан) хадгалаад хагас тунгалаг дүүргэлт + тод хүрээ болгов —
+       доорх уурхайн зураг уншигдана. Анхдагчаар УНТРААЛТТАЙ. */
+    L.hazard = new FeatureLayer({
+      url: SVC.hazard, title: "hazard", outFields: ["code", "Name", "Shape__Area"],
+      popupEnabled: false, visible: false,
+      elevationInfo: { mode: "on-the-ground" },
+      renderer: {
+        type: "unique-value", field: "code",
+        uniqueValueInfos: HAZARD_COLORS.map((c, i) => ({
+          value: i + 1,
+          symbol: { type: "simple-fill", color: hex(c, 0.34),
+                    outline: { color: hex(c, 0.95), width: 1.6 } },
+        })),
+      } as any,
     });
 
     /* Рендерерийг ДАРАХГҮЙ — сервис дээрх өөрийнх нь симбологи ажиллана:
@@ -224,6 +338,7 @@ export default function MineScene() {
         symbol: { type: "simple-line", width: 2, cap: "round", join: "round",
                   color: hex(d ? "#e8d9a8" : "#7a6636", 0.85) },
       } as any;
+      L.roadIso?.graphics.forEach((g: Graphic) => { g.symbol = roadSymbol(); });
       L.dam.renderer = {
         type: "simple",
         symbol: { type: "simple-fill", color: hex(d ? "#4b93a2" : "#3f7f8c", 0.42),
@@ -281,6 +396,23 @@ export default function MineScene() {
     L.pitMesh = new GraphicsLayer({
       title: "pit-mesh", elevationInfo: { mode: "absolute-height" }, visible: false,
     });
+    /* «Зөвхөн уурхай» горимын тээврийн зам. Сарын DWG мэш нь энгийн
+       графикийн давхарга тул `relative-to-scene` түүнийг харгалздаггүй.
+       Бодит мэш нуугдахад зам үл үзэгдэх газрын DEM (≈1310 м) дагаж
+       питийн дээгүүр хөвж байв. Иймээс замын цэг бүрийн өндрийг сарын
+       мэшээс авч, абсолют өндрөөр тусад нь зурна. Харагдах эсэхийг
+       «Тээврийн зам» товч удирдана (syncRoadIso). */
+    /* БЛОК ЗАГВАР — сарын хэмжилтүүдийн хооронд олборлосон блокууд
+       (I:/EMC/Block, tools/build_block_mesh.py). Тухайн сарын пит дээр
+       «энэ хугацаанд авсан эзэлхүүн» болж сууна. Мэшийг lib/blockModel.ts
+       хөтөч дээр үүсгэнэ (зүсэлт, блок бүрийн мэдээлэл). */
+    L.blocks = new GraphicsLayer({
+      title: "blocks", elevationInfo: { mode: "absolute-height" }, visible: false,
+    });
+    L.roadIso = new GraphicsLayer({
+      title: "road-iso", visible: false,
+      elevationInfo: { mode: "absolute-height", offset: ROAD_LIFT },
+    });
     /* Урсгалын давхаргууд ГАЗРЫН ГАДАРГУУД НААЛДАНА.
        `absolute-height` дээр өндрийг өөрсдөө тооцох шаардлагатай болж,
        ил уурхайн ёроолоос (≈1177 м) эхэлсэн зам гадаргуугийн (≈1310 м)
@@ -301,22 +433,28 @@ export default function MineScene() {
        дагадаг — геометрийн z нь тэр гадаргуугаас дээших шилжилт (=0). */
     const onScene = { mode: "relative-to-scene", offset: 0 } as const;
     L.trucks = new GraphicsLayer({ title: "trucks", elevationInfo: onScene });
-    /* Хаягдлын хоолой нь ГАЗАР ДООР — гадаргуугаас 20 м доош.
+    L.excavators = new GraphicsLayer({ title: "excavators", elevationInfo: onScene });
+    const alerts = createHazardAlerts();
+    hazardAlerts.current = alerts;
+    L.truckAlerts = alerts.layer;
+    /* Хаягдлын хоолой нь ГАЗАР ДООР — гадаргуугаас 12 м доош.
        Харагдахын тулд «Газрын гадаргуу» тохиргоог «Хагас» эсвэл
-       «Унтраах» болгоно. */
+       «Унтраах» болгоно. Ус ба хоолойн өндрийг нэг DEM-ээс тооцно. */
     L.tails  = new GraphicsLayer({
       title: "tailings",
-      elevationInfo: { mode: "relative-to-ground", offset: -TAIL_DEPTH },
+      elevationInfo: { mode: "absolute-height" },
     });
 
     const map = new Map({
       basemap: Basemap.fromId("satellite")!,
-      layers: [L.im, L.roadNet, L.dam, L.bld, L.pile2d, L.pile3d, L.pitMesh,
-               L.tails, L.trucks],
+      layers: [L.im, L.roadNet, L.dam, L.hazard, L.bld, L.pile2d, L.pile3d, L.pitMesh, L.blocks, L.roadIso,
+               L.tails, L.trucks, L.excavators, L.truckAlerts],
     });
     map.ground.layers.add(new ElevationLayer({ url: ELEV_URL }));
     map.ground.opacity = GROUND_OPACITY[0];
     map.ground.navigationConstraint = { type: "none" } as any;
+    /* «Тээврийн зам» товчийг дарахад «Зөвхөн уурхай» горимын зам дагана */
+    reactiveUtils.watch(() => L.roadNet.visible, () => { syncRoadIso(); });
     mapRef.current = map;
 
     const host = divRef.current;
@@ -331,6 +469,7 @@ export default function MineScene() {
       view = new SceneView({
         container: host!,
         map,
+        alphaCompositingEnabled: true,
         qualityProfile: "high",
         camera: {
           position: { longitude: 104.1, latitude: 48.94, z: 5200 }, tilt: 58, heading: 18,
@@ -338,8 +477,7 @@ export default function MineScene() {
         environment: { lighting: { directShadowsEnabled: false } } as any,
         ui: {
           components: ["zoom", "compass", "navigation-toggle"],
-          /* дээд талд .hintbar сууж байгаа тул виджетүүдийг доош түлхэнэ */
-          padding: { top: 44, right: 12, bottom: 12, left: 12 },
+          padding: { top: 12, right: 12, bottom: 12, left: 12 },
         } as any,
         popup: { autoOpenEnabled: false } as any,
       });
@@ -350,6 +488,7 @@ export default function MineScene() {
         new Expand({
           view,
           expandIcon: "basemap",
+          group: "top-left",
           content: new BasemapGallery({
             view,
             source: BM_IDS.map((id) => Basemap.fromId(id)).filter(Boolean) as Basemap[],
@@ -357,17 +496,43 @@ export default function MineScene() {
         }),
         "top-left",
       );
+      /* Esri-гийн ХЭМЖИЛТ — шулуун зай (хэвтээ/босоо зөрүүтэй) ба талбай.
+         Суурь зургийн дүрсийн доор; нэг бүлэгт тул нэг нь нээгдэхэд нөгөө
+         нь хаагдана. */
+      const tt = stateRef.current.t;
+      view.ui.add([
+        new Expand({ view, group: "top-left", expandIcon: "measure-line",
+                     expandTooltip: tt.measLine, content: new DirectLineMeasurement3D({ view }) }),
+        new Expand({ view, group: "top-left", expandIcon: "measure-area",
+                     expandTooltip: tt.measArea, content: new AreaMeasurement3D({ view }) }),
+      ], "top-left");
+      /* Open pit · Давхарга · Бүтэн дэлгэц — суурь зургийн дүрсийн доор */
+      view.ui.add(btnHost, "top-left");
 
       viewRef.current = view;
       return view;
     }
 
     buildView();
+    /* Машины анхааруулга нь бүсийн өнгөт давхаргын харагдацаас үл хамаарна. */
+    const alertVisibility = reactiveUtils.watch(
+      () => L.trucks.visible,
+      (shown) => { alerts.layer.visible = shown; },
+      { sync: true },
+    );
+    void loadHazardZones();
 
     /* --------- питийн мэшийн байрлалын мэдээлэл --------- */
     fetch("/data/pit_mesh.json")
       .then((r) => r.json())
-      .then((j) => { meshInfo.current = j; return view.when(); })
+      .then(async (j) => {
+        meshInfo.current = j;
+        /* Блок загвар байхгүй байсан ч газрын зураг ажиллах ёстой */
+        blockInfo.current = await fetch("/data/blocks.json")
+          .then((r) => (r.ok ? r.json() : null)).catch(() => null);
+        setHasBlocks(!!blockInfo.current);
+        return view.when();
+      })
       .then(() => {
         if (cancelled) return;
         setReady(true);
@@ -376,18 +541,39 @@ export default function MineScene() {
         /* Хоёр goTo зэрэг ажиллуулж болохгүй — сүүлд дуусаад байгаа нь
            нөгөөгөө дардаг. Урсгал асаалттай үед хүрээг `frameFlow` тогтооно
            (уурхай + бүх хүлээн авагч), эсрэг тохиолдолд зөвхөн пит. */
+        showBlocks();
         showMesh(stateRef.current.m).then(() => {
           if (!flowOn) zoomTo(L.pitMesh, undefined, 1.15);
         });
-        wireHover(view);
+        disposeHover = wireHover(view);
         syncVisible();
         if (flowOn) startFlow();
       })
       .catch(() => setReady(true));
 
       return () => {
+        disposeHover?.();
         window.removeEventListener("emc-theme", applyTheme);
-        if (flowTimer.current) window.clearTimeout(flowTimer.current);
+        if (flowFrame.current !== null) cancelAnimationFrame(flowFrame.current);
+        flowFrame.current = null;
+        tailAbort.current?.abort();
+        tailFlow.current?.destroy();
+        tailFlow.current = null;
+        if (tailSlice.current) {
+          view.analyses.remove(tailSlice.current);
+          tailSlice.current.destroy();
+        }
+        tailSlice.current = null;
+        ++tailFocusRequest.current;
+        tailInspection.current = null;
+        hazardAbort.current?.abort();
+        hazardAbort.current = null;
+        alertVisibility.remove();
+        alerts.destroy();
+        hazardAlerts.current = null;
+        hazardZones.current = [];
+        excavatorGfx.current = [];
+        excavatorScale.current = 0;
         view.destroy();
         viewRef.current = null;
       };
@@ -401,34 +587,222 @@ export default function MineScene() {
      Ил уурхайгаас хүлээн авагч бүр рүү. Машины ТОО нь Excel-ийн тухайн
      сарын тонны хувиар хуваарилагдана — олон тонн бол олон машин.
      Баяжуулах үйлдвэрээс хаягдлын далан руу хаягдал хоолойгоор урсахыг
-     хөдөлгөөнт цэгээр үзүүлнэ (машинаар биш). */
+     долгионтой усны гадаргуу, урсгал дагасан хөөсөөр үзүүлнэ. */
   async function startFlow() {
-    const dests = await loadDests();
-    if (!dests.length) { zoomTo(layersRef.current.pitMesh, undefined, 1.15); return; }
+    const view = viewRef.current;
+    if (!view) return;
+    const [dests, parked, path] = await Promise.all([
+      loadDests(), loadParked(), loadTailLine(),
+    ]);
+    if (viewRef.current !== view) return;
     destsRef.current = dests;
     /* Зогсоолын шугам дээрх хөдөлгөөнгүй машинууд (уурхайн ажлын талбай,
        үйлдвэрийн орчим). Сар солиход өөрчлөгдөхгүй тул нэг л удаа. */
-    parkedRef.current = await loadParked();
+    parkedRef.current = parked;
 
     /* Хаягдлын ГАЗАР ДООРХ хоолой — жинхэнэ шугам (Bayjuulah_hayagdal_line) */
-    tailPath.current = await loadTailLine();
-    drawTailPipe();
+    const controller = new AbortController();
+    tailAbort.current = controller;
+    setTailStatus("loading");
+    void createTailings(view, layersRef.current.tails, path, TAIL_DEPTH, PIPE_D, controller.signal)
+      .then((flow) => {
+        if (controller.signal.aborted || viewRef.current !== view) {
+          flow.destroy();
+          return;
+        }
+        tailFlow.current = flow;
+        flow.setPipeOpacity(1 - tailTransparencyRef.current / 100);
+        setTailStatus(flow.inspectionTarget ? "ready" : "error");
+      })
+      .catch((error: unknown) => {
+        if (!controller.signal.aborted) {
+          setTailStatus("error");
+          console.warn("Хаягдлын урсгал ачаалж чадсангүй:", error);
+        }
+      });
 
     rebuildFlow();
-    frameFlow();
+    if (dests.length) frameFlow();
+    else zoomTo(layersRef.current.pitMesh, undefined, 1.15);
 
     let last = performance.now();
+    let truckElapsed = 0;
+    let waterElapsed = 0;
+    let telemetryElapsed = 0;
+    let waterMonth = 0;
+    let waterQuantity = 0;
     const tick = () => {
-      if (!viewRef.current) return;
+      if (viewRef.current !== view) return;
       const now = performance.now();
       const dt = Math.min(0.5, (now - last) / 1000);
       last = now;
-      simRef.current?.step(dt);
-      drawTrucks();
-      drawTailings(now / 1000);
-      flowTimer.current = window.setTimeout(tick, 120);
+      truckElapsed += dt;
+      waterElapsed += dt;
+      telemetryElapsed += dt;
+      if (truckElapsed >= 0.12) {
+        simRef.current?.step(truckElapsed);
+        if (layersRef.current.trucks?.visible) drawTrucks();
+        if (layersRef.current.excavators?.visible) drawExcavators();
+        truckElapsed = 0;
+      }
+      if (telemetryElapsed >= 0.5) {
+        if (stateRef.current.mapMax) refreshTruckTelemetry();
+        telemetryElapsed = 0;
+      }
+      if (waterElapsed >= 1 / 30) {
+        if (waterMonth !== stateRef.current.m) {
+          waterMonth = stateRef.current.m;
+          waterQuantity = sumCol(waterMonth, C.AGU) + sumCol(waterMonth, C.BOH);
+        }
+        tailFlow.current?.update(waterElapsed, waterQuantity);
+        waterElapsed = 0;
+      }
+      flowFrame.current = requestAnimationFrame(tick);
     };
     tick();
+  }
+
+  function focusTailings(detail = true) {
+    const target = tailFlow.current?.inspectionTarget;
+    const view = viewRef.current;
+    if (!view || !target) return;
+    const inspectionSession = tailInspection.current;
+    const request = ++tailFocusRequest.current;
+    const span = detail ? target.span : Math.max(180, TAIL_DEPTH * 6);
+    const focusZ = target.z + (detail ? 0 : TAIL_DEPTH * 0.35);
+    const heading = (target.heading + 90) % 360;
+    const tilt = detail ? 62 : 55;
+    const distance = span * 1.2;
+    const horizontal = distance * Math.sin(tilt * Math.PI / 180);
+    const bearing = heading * Math.PI / 180;
+    const initial = view.camera.clone();
+    initial.heading = heading;
+    initial.tilt = tilt;
+    initial.position = new Point({
+      longitude: target.lon - Math.sin(bearing) * horizontal / (111320 * Math.cos(target.lat * Math.PI / 180)),
+      latitude: target.lat - Math.cos(bearing) * horizontal / 111320,
+      z: focusZ + distance * Math.cos(tilt * Math.PI / 180),
+      spatialReference: { wkid: 4326 },
+    });
+    void view.goTo(initial, { duration: 900 }).then(() => {
+      if (request !== tailFocusRequest.current || tailInspection.current !== inspectionSession
+          || view.destroyed || view.interacting) return;
+      // Fit a local section, keeping the smaller pipe's true diameter. The
+      // overview includes terrain above it; the detail view shows moving water.
+      const angle = target.heading * Math.PI / 180;
+      const dx = Math.sin(angle) * span / 2 / (111320 * Math.cos(target.lat * Math.PI / 180));
+      const dy = Math.cos(angle) * span / 2 / 111320;
+      const a = view.toScreen(new Point({ longitude: target.lon - dx, latitude: target.lat - dy, z: focusZ }));
+      const b = view.toScreen(new Point({ longitude: target.lon + dx, latitude: target.lat + dy, z: focusZ }));
+      if (!a || !b) return;
+      const width = Math.hypot(b.x - a.x, b.y - a.y);
+      const wanted = Math.min(view.width * 0.70, view.height * 1.7);
+      const ratio = width / Math.max(1, wanted);
+      if (!Number.isFinite(ratio) || Math.abs(ratio - 1) < 0.08) return;
+      // SceneView's reported scale is ground-relative even for an underground
+      // target. Scale the actual camera-to-target distance to preserve framing.
+      const camera = view.camera.clone();
+      const position = camera.position.clone();
+      if (position.longitude == null || position.latitude == null || position.z == null) return;
+      position.longitude = target.lon + (position.longitude - target.lon) * ratio;
+      position.latitude = target.lat + (position.latitude - target.lat) * ratio;
+      position.z = focusZ + (position.z - focusZ) * ratio;
+      camera.position = position;
+      return view.goTo(camera, { duration: 350 });
+    }).catch(() => {});
+  }
+
+  function closeTailInspection(restoreCamera = true) {
+    const previous = tailInspection.current;
+    const view = viewRef.current, map = mapRef.current;
+    if (!previous || !view || !map) return;
+    tailInspection.current = null;
+    ++tailFocusRequest.current;
+    setTailInspect(false);
+    view.animation?.stop();
+    clearTailSlice();
+    changeTailTransparency(0);
+    map.ground.opacity = previous.groundOpacity;
+    if (layersRef.current.tails) layersRef.current.tails.visible = previous.tailsVisible;
+    if (restoreCamera) view.goTo(previous.camera, { duration: 700 }).catch(() => {});
+    syncVisible();
+  }
+
+  function inspectTailings() {
+    if (!tailFlow.current?.inspectionTarget || !viewRef.current || !mapRef.current) return;
+    ++truckFocusRequest.current;
+    if (isoRef.current) applyIsolate(false);
+    if (!tailInspection.current) {
+      tailInspection.current = {
+        camera: viewRef.current.camera.clone(),
+        groundOpacity: mapRef.current.ground.opacity,
+        tailsVisible: layersRef.current.tails.visible,
+      };
+    }
+    layersRef.current.tails.visible = true;
+    // Start with an intact, opaque pipe beneath visible terrain. Tools reveal
+    // the liquid only when requested, without replacing the map environment.
+    clearTailSlice();
+    changeTailTransparency(0);
+    changeTailGroundTransparency(65);
+    setTailInspect(true);
+    setLayersOpen(false);
+    syncVisible();
+    focusTailings(false);
+  }
+
+  function changeTailTransparency(value: number) {
+    const transparency = Math.max(0, Math.min(100, value));
+    setTailTransparency(transparency);
+    tailTransparencyRef.current = transparency;
+    tailFlow.current?.setPipeOpacity(1 - transparency / 100);
+  }
+
+  /* Газрын тунгалаг байдлын гулсуурыг хассан — хоолой харагдахын тулд
+     самбар нээгдэхэд газрыг автоматаар 65 % тунгалаг болгоно. */
+  function changeTailGroundTransparency(value: number) {
+    const transparency = Math.max(0, Math.min(100, value));
+    if (mapRef.current) mapRef.current.ground.opacity = 1 - transparency / 100;
+  }
+
+  function clearTailSlice() {
+    if (tailSlice.current) {
+      viewRef.current?.analyses.remove(tailSlice.current);
+      tailSlice.current.destroy();
+    }
+    tailSlice.current = null;
+    tailFlow.current?.setCutaway(false);
+    setTailSliced(false);
+  }
+
+  function toggleTailSlice() {
+    const view = viewRef.current, flow = tailFlow.current, map = mapRef.current;
+    const target = flow?.inspectionTarget;
+    if (!view || !flow || !target || !map) return;
+    if (tailSlice.current) { clearTailSlice(); return; }
+    const analysis = new SliceAnalysis({
+      // Cut terrain locally. The pipe's curved cutaway is applied to its own
+      // mesh so the liquid stays complete when the terrain is sliced away.
+      excludedLayers: [layersRef.current.tails],
+      excludeGroundSurface: false,
+      shape: new SlicePlane({
+        position: new Point({ longitude: target.lon, latitude: target.lat, z: target.z + PIPE_D,
+          spatialReference: { wkid: 4326 } }),
+        heading: target.heading, tilt: 0,
+        width: target.span * 2, height: target.span * 2,
+      }),
+    });
+    tailSlice.current = analysis;
+    view.analyses.add(analysis);
+    flow.setCutaway(true);
+    setTailSliced(true);
+    focusTailings();
+  }
+
+  function toggleTailTransparency() {
+    const enabled = tailTransparencyRef.current > 0;
+    changeTailTransparency(enabled ? 0 : 85);
+    if (!enabled) focusTailings();
   }
 
   /** Уурхай + бүх хүлээн авагчийг нэг дор багтаасан камер.
@@ -457,6 +831,7 @@ export default function MineScene() {
   function rebuildFlow() {
     const L = layersRef.current;
     if (!destsRef.current.length || !L.trucks) return;
+    clearHover.current?.();
 
     const sim = new FlowSim(destsRef.current, stateRef.current.m, 14, parkedRef.current);
     simRef.current = sim;
@@ -464,27 +839,155 @@ export default function MineScene() {
     /* Маршрутыг ТУСГАЙ ШУГАМААР ЗУРАХГҮЙ. Урьд нь чиглэл бүрийг өнгөт
        шугамаар давхарлаж байсан нь `Road_truck_SL` замын дээгүүр гарч,
        өөр нэг зам мэт уншигдаж байв. Одоо газрын зураг дээр ЗӨВХӨН
-       сервисийн зам харагдана; чиглэлийг машины ӨНГӨ, харин тонны
+       сервисийн зам харагдана; бүх машин шар Haul Truck, харин тонны
        хэмжээг машины ТОО илэрхийлнэ. */
     L.trucks.removeAll();
     truckGfx.current = sim.trucks.map(() => new Graphic());
     truckKey.current = sim.trucks.map(() => "");
     L.trucks.addMany(truckGfx.current);
-
-
+    L.excavators.removeAll();
+    excavatorGfx.current = placeExcavators(parkedRef.current).map((placement, index) => new Graphic({
+      geometry: new Point({
+        longitude: placement.lon, latitude: placement.lat, z: 0,
+        spatialReference: { wkid: 4326 },
+      }),
+      attributes: { excavatorNumber: index + 1, truckId: placement.truckId, heading: placement.heading },
+    }));
+    L.excavators.addMany(excavatorGfx.current);
+    excavatorScale.current = 0;
+    drawTrucks();
+    drawExcavators();
+    setSelectedTruck(null);
+    if (stateRef.current.mapMax) refreshTruckTelemetry();
   }
 
-  /** var(--x) -> бодит hex (ArcGIS-ийн материалд hex хэрэгтэй) */
-  function cssVar(v: string) {
-    const m = v.match(/var\((--[a-z0-9-]+)\)/i);
-    if (!m) return v;
-    return getComputedStyle(document.documentElement).getPropertyValue(m[1]).trim() || "#888888";
+  /** Геометрийг нэг удаа WGS84-өөр авна; машин хөдлөх бүрт сервер асуухгүй. */
+  async function loadHazardZones() {
+    const view = viewRef.current;
+    if (!view) return;
+    hazardAbort.current?.abort();
+    const controller = new AbortController();
+    hazardAbort.current = controller;
+    hazardZones.current = [];
+    hazardAlerts.current?.sync([], truckHeight());
+    setHazardStatus("loading");
+    try {
+      const options = { signal: controller.signal };
+      /* REST query нь давхаргын анхны load алдааг кэшлэхгүй; retry ажиллана. */
+      const ids = await executeForIds(SVC.hazard, { where: "1=1" }, options);
+      const features: Graphic[] = [];
+      /* Бүс нэмэгдсэн ч сервисийн maxRecordCount-аас болж хэсэг нь алга болохгүй. */
+      for (let start = 0; start < ids.length; start += 500) {
+        const result = await executeQueryJSON(SVC.hazard, {
+          objectIds: ids.slice(start, start + 500),
+          outFields: ["code"], returnGeometry: true,
+          outSpatialReference: { wkid: 4326 },
+        }, options);
+        if (result.exceededTransferLimit) throw new Error("Incomplete hazard geometry");
+        features.push(...result.features);
+      }
+      if (controller.signal.aborted || viewRef.current !== view) return;
+      hazardZones.current = compileHazardZones(features.map((feature) => ({
+        attributes: feature.attributes,
+        geometry: feature.geometry?.type === "polygon" ? feature.geometry : null,
+      })));
+      setHazardStatus("ready");
+      syncTruckAlerts();
+    } catch (error: unknown) {
+      if (controller.signal.aborted || viewRef.current !== view) return;
+      console.warn("Аюулын бүс ачаалж чадсангүй:", error);
+      setHazardStatus("error");
+    }
   }
+
+  function syncTruckAlerts() {
+    const sim = simRef.current;
+    if (!sim) return;
+    hazardAlerts.current?.sync(sim.trucks.map((truck) => ({
+      id: truck.id, lon: truck.lon, lat: truck.lat,
+      level: hazardLevelAt(hazardZones.current, truck.lon, truck.lat),
+    })), truckHeight());
+  }
+
+  /** Картын налуу: уурхайн сарын мэш, гадна нь ачаалагдсан газрын өндөр. */
+  function sampleTruckElevation(lon: number, lat: number): TerrainElevationSample | null {
+    const terrain = telemetryTerrain.current;
+    if (!terrain || terrain.month !== stateRef.current.m) return null;
+    const height = terrain.sample?.(lon, lat);
+    if (height != null && Number.isFinite(height)) return { height, source: "mesh" };
+    const sampler = viewRef.current?.groundView.elevationSampler;
+    if (!sampler) return null;
+    let x = lon, y = lat;
+    if (sampler.spatialReference.isWebMercator) [x, y] = wmUtils.lngLatToXY(lon, lat);
+    else if (!sampler.spatialReference.isWGS84) return null;
+    const extent = sampler.extent;
+    if (!extent || x < extent.xmin || x > extent.xmax || y < extent.ymin || y > extent.ymax) return null;
+    const elevation = sampler.elevationAt(x, y);
+    return Number.isFinite(elevation) && elevation !== sampler.noDataValue
+      ? { height: elevation, source: "ground" } : null;
+  }
+
+  function refreshTruckTelemetry() {
+    setTruckTelemetry(buildTruckTelemetry(
+      simRef.current?.trucks ?? [],
+      sampleTruckElevation,
+      (lon, lat) => hazardStatusRef.current === "ready" ? hazardLevelAt(hazardZones.current, lon, lat) : null,
+    ));
+  }
+
+  async function focusTruck(id: number) {
+    const view = viewRef.current, sim = simRef.current;
+    if (!view || !sim || !layersRef.current.trucks?.visible) return;
+    if (tailInspection.current) closeTailInspection(false);
+    const request = ++truckFocusRequest.current;
+    const month = stateRef.current.m;
+    const index = sim.trucks.findIndex((truck) => truck.id === id);
+    const graphic = truckGfx.current[index];
+    if (!graphic?.geometry) return;
+    setSelectedTruck(id);
+    const sample = telemetryTerrain.current?.month === month
+      ? telemetryTerrain.current.sample : await heightGrid(month).catch(() => null);
+    if (request !== truckFocusRequest.current || viewRef.current !== view || stateRef.current.m !== month ||
+        simRef.current !== sim || !stateRef.current.mapMax || !layersRef.current.trucks?.visible) return;
+    const truck = sim.trucks[index];
+    const height = sample?.(truck.lon, truck.lat);
+    const elevation = height != null && Number.isFinite(height) ? height
+      : sampleTruckElevation(truck.lon, truck.lat)?.height;
+    // The quarry floor is below the world DEM used by goTo(Graphic).
+    const target = elevation == null ? graphic : new Point({
+      longitude: truck.lon, latitude: truck.lat, z: elevation + truckHeight() / 2,
+      spatialReference: { wkid: 4326 },
+    });
+    view.goTo({ target, scale: 1000, tilt: 60 }, { duration: 900 }).catch(() => {});
+  }
+
+  useEffect(() => {
+    if (!mapMax || !ready) return;
+    let cancelled = false;
+    telemetryTerrain.current = null;
+    refreshTruckTelemetry();
+    void heightGrid(m).then((sample) => {
+      if (cancelled) return;
+      telemetryTerrain.current = { month: m, sample };
+      refreshTruckTelemetry();
+    }).catch(() => {
+      if (cancelled) return;
+      telemetryTerrain.current = { month: m, sample: null };
+      refreshTruckTelemetry();
+    });
+    return () => { cancelled = true; };
+  }, [mapMax, ready, m]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    const view = viewRef.current;
+    if (!view || !ready) return;
+    view.ui.padding = { top: 12, right: 12, bottom: mapMax ? 164 : 12, left: 12 };
+  }, [mapMax, ready]);
 
   /**
    * Машины хэмжээ.
    *
-   * Бодит хэмжээ (8.0 x 6.2 x 12.8 м) нь уурхай + овоолгыг хамарсан
+   * Загварын хэмжээ (7.90 x 6.15 x 12.88 м) нь уурхай + овоолгыг хамарсан
    * хүрээнд пикселийн доогуур ордог тул масштабаас хамааруулж бага зэрэг
    * томруулна.
    *
@@ -517,142 +1020,45 @@ export default function MineScene() {
       });
       const hb = Math.round(tr.heading / 4) * 4;
       const th = truckHeight();
-      const key = tr.dest + "|" + hb + "|" + (tr.loaded ? 1 : 0) + "|" + th;
+      const modelUrl = tr.loaded && !tr.parked
+        ? "/data/truck-loaded.glb?v=haul-v3"
+        : "/data/truck.glb?v=haul-v3";
+      const key = modelUrl + "|" + hb + "|" + th;
       if (truckKey.current[i] === key) return;
       truckKey.current[i] = key;
-      const col = cssVar(tr.color);
       g.symbol = {
         type: "point-3d",
         symbolLayers: [{
-          type: "object", resource: { href: "/data/truck.glb" },
-          material: { color: hex(col, 1), colorMixMode: "tint" },
+          // Native GLB materials preserve yellow paint, black tires and cab glass.
+          type: "object", resource: { href: modelUrl },
           height: th, heading: hb, anchor: "bottom",
         }],
       } as any;
-      g.attributes = { dest: tr.dest, destName: tr.destName, loaded: tr.loaded };
+      g.attributes = {
+        truckId: tr.id, displayNumber: i + 1,
+        dest: tr.dest, destName: tr.destName, loaded: tr.loaded,
+      };
     });
+    syncTruckAlerts();
   }
 
-  /** Хаягдлын урсгал — хоолойн дагуу хөдөлж буй цэгүүд */
-  /** Хоолойн дагуух хуримтлагдсан зай — дэд хэрчим таслахад хэрэгтэй */
-  function tailCum() {
-    const path = tailPath.current;
-    const cum = [0];
-    for (let i = 1; i < path.length; i++) {
-      const a = path[i - 1], b = path[i];
-      const la = ((a.lat + b.lat) / 2) * (Math.PI / 180);
-      cum.push(cum[i - 1] + Math.hypot(
-        (b.lon - a.lon) * 111320 * Math.cos(la), (b.lat - a.lat) * 110540));
-    }
-    return cum;
-  }
-
-  /** Хоолойн s0..s1 хэсгийн оройнууд */
-  function tailSeg(cum: number[], s0: number, s1: number) {
-    const path = tailPath.current;
-    const total = cum[cum.length - 1];
-    const a = Math.max(0, Math.min(total, s0));
-    const b = Math.max(0, Math.min(total, s1));
-    const at = (s: number) => {
-      let i = 1;
-      while (i < cum.length - 1 && cum[i] < s) i++;
-      const t = (s - cum[i - 1]) / Math.max(1e-6, cum[i] - cum[i - 1]);
-      const p = path[i - 1], q = path[i];
-      return [p.lon + (q.lon - p.lon) * t, p.lat + (q.lat - p.lat) * t, 0];
-    };
-    const out: number[][] = [at(a)];
-    for (let i = 1; i < cum.length - 1; i++) if (cum[i] > a && cum[i] < b) {
-      out.push([path[i].lon, path[i].lat, 0]);
-    }
-    out.push(at(b));
-    return out;
-  }
-
-  /**
-   * Хоолой өөрөө — нэг л удаа зурагдана.
-   *
-   * `line` биш `path` симбол: дугуй хөндлөн огтлолтой ЖИНХЭНЭ ХООЛОЙ
-   * (метрээр хэмжигдэнэ, зумаас хамаарахгүй). Хагас тунгалаг тул дотор нь
-   * урсаж буй бодис харагдана. Урьд нь нимгэн шугам дээгүүр бөмбөлөг
-   * өнхөрдөг байсан нь хоолой мэт огт уншигддаггүй байв.
-   */
-  function drawTailPipe() {
-    const L = layersRef.current;
-    const path = tailPath.current;
-    if (!L.tails || path.length < 2) return;
-    L.tails.removeAll();
-    tailGfx.current = [];
-    const geom = {
-      type: "polyline", spatialReference: { wkid: 4326 },
-      paths: [path.map((p) => [p.lon, p.lat, 0])],
-    } as any;
-    const tube = (d: number, color: [number, number, number, number]) => ({
-      type: "line-3d",
-      symbolLayers: [{
-        type: "path", profile: "circle", width: d, height: d,
-        cap: "round", join: "round",
-        material: { color }, castShadows: false,
-      }],
-    } as any);
-    /* 1) Хоолойн бүрхүүл — хагас тунгалаг */
-    L.tails.add(new Graphic({ geometry: geom, symbol: tube(PIPE_D, hex("#9fb6c4", 0.5)) }));
-    /* 2) УСНЫ ЦӨМ — хоолойн БҮХ УРТААР тасралтгүй. Урьд нь зөвхөн
-          хөдөлж буй хэрчмүүд байсан тул хоолой хоосон, ус тасархай
-          мэт харагддаг байв. */
-    L.tails.add(new Graphic({
-      geometry: geom, symbol: tube(FLOW_D, hex(cssVar("var(--water)"), 0.55)),
-    }));
-  }
-
-
-  function drawTailings(tsec: number) {
-    const L = layersRef.current;
-    const path = tailPath.current;
-    if (!L.tails || path.length < 2) return;
-
-    /* Урсгалын НЯГТ ба ХУРД нь Excel-ийн тоогоор: «Агуулахад гаргасан
-       хүдэр (хаягдал)» + «Бохирдол, нийт» (сард 206–254 мян.тн).
-       Хуваарь 0-ээс эхэлнэ — сар хоорондын зөрүү бодитоор уншигдана. */
-    const q = sumCol(stateRef.current.m, C.AGU) + sumCol(stateRef.current.m, C.BOH);
-    const N = Math.max(4, Math.min(26, Math.round(q / 16)));
-    const spd = 0.02 + (q / 260) * 0.05;
-
-    const cum = tailCum();
-    const total = cum[cum.length - 1];
-
-    if (tailGfx.current.length !== N) {
-      L.tails.removeMany(tailGfx.current);
-      tailGfx.current = Array.from({ length: N }, () => new Graphic());
-      L.tails.addMany(tailGfx.current);
-    }
-    for (let k = 0; k < N; k++) {
-      const s0 = ((tsec * spd + k / N) % 1) * total;
-      const g = tailGfx.current[k];
-      /* ГЕОМЕТРийг л шинэчилнэ — симбол хөндөгдөхгүй тул анивчихгүй */
-      g.geometry = {
-        type: "polyline", spatialReference: { wkid: 4326 },
-        paths: [tailSeg(cum, s0, Math.min(total, s0 + FLOW_SEG))],
+  function drawExcavators() {
+    const scale = truckHeight() / 6.15;
+    if (excavatorScale.current === scale) return;
+    excavatorScale.current = scale;
+    for (const graphic of excavatorGfx.current) {
+      graphic.symbol = {
+        type: "point-3d",
+        symbolLayers: [{
+          type: "object", resource: { href: "/data/excavator.glb?v=excavator-v9-inward-cavity" },
+          // Native GLB height; keep machinery at the same scale as the trucks.
+          height: 5.9054 * scale, heading: graphic.attributes.heading, anchor: "bottom",
+        }],
       } as any;
-      if (!g.symbol) {
-        g.symbol = {
-          type: "line-3d",
-          symbolLayers: [{
-            /* Усны цөмийн ДОТОР гүйх тод долгион. Цөм нь хагас тунгалаг
-               тул дотуур нь харагдана; цөм тасралтгүй учир эдгээр нь
-               хоосон зай биш, урсгалын хөдөлгөөнийг л заана. */
-            type: "path", profile: "circle",
-            width: WAVE_D, height: WAVE_D,
-            cap: "round", join: "round",
-            material: { color: hex("#cdeef7", 0.95) },
-            castShadows: false,
-          }],
-        } as any;
-      }
     }
   }
 
 
-  /* ---------------------------------------------------- туслах үйлдлүүд */
   function syncVisible() {
     const L = layersRef.current;
     const v: Record<string, boolean> = {};
@@ -661,40 +1067,222 @@ export default function MineScene() {
   }
 
   function meshSymbol(iso: boolean) {
+    /* «Open pit» горимд оройн өнгө (байгалийн өнгө + өөрчлөлт) харагдана */
     return {
       type: "mesh-3d",
       symbolLayers: [{ type: "fill",
-        material: { color: hex(iso ? "#9a9187" : "#8d7f70", 1), colorMixMode: "replace" } }],
+        material: iso ? { color: [255, 255, 255, 1], colorMixMode: "multiply" }
+                      : { color: hex("#8d7f70", 1), colorMixMode: "replace" } }],
     } as any;
+  }
+
+  function loadPitMesh(month: number): Promise<Mesh | null> {
+    const info = meshInfo.current[String(month)];
+    if (!info) return Promise.resolve(null);
+    return meshLoad.current[month] ??= Mesh.createFromGLTF(
+      new Point({ longitude: info.lon, latitude: info.lat, z: info.z, spatialReference: { wkid: 4326 } }),
+      info.url,
+    ).catch((e) => {
+      console.warn("GLB ачаалж чадсангүй:", e);
+      delete meshLoad.current[month];
+      return null;
+    });
+  }
+
+  /** Сарын гадаргууг байгалийн өнгөөр, асаалттай бол өмнөх сараас
+   *  өөрчлөгдсөн хэсгийг улаанаар будна (lib/pitSurface.ts). */
+  async function paintPit(month: number) {
+    const mesh = await loadPitMesh(month);
+    if (!mesh) return;
+    let pc = pitColorCache.current[month];
+    if (!pc) {
+      const prev = month > 1 ? await loadPitMesh(month - 1) : null;
+      pc = pitColorCache.current[month] ??= pitColors(mesh, prev);
+    }
+    const arr = blkRef.current.change && pc.change ? pc.change : pc.base;
+    if (mesh.vertexAttributes.color !== arr) {
+      mesh.vertexAttributes.color = arr;
+      mesh.vertexAttributesChanged();
+    }
+    if (stateRef.current.m === month) setChangeHa(pc.change ? pc.changedHa : null);
   }
 
   async function showMesh(month: number) {
     const L = layersRef.current;
-    const info = meshInfo.current[String(month)];
+    const mesh = await loadPitMesh(month);
+    if (stateRef.current.m !== month) return;
+    if (!mesh) { L.pitMesh.removeAll(); return; }
+    /* Өнгийг нэмэхээс ӨМНӨ будна — хуучин сарын мэш шинэ нь бэлэн болтол
+       үлдэх тул солих үед анивчихгүй */
+    await paintPit(month);
+    if (stateRef.current.m !== month) return;
     L.pitMesh.removeAll();
-    if (!info) return;
-    const sym = meshSymbol(isolated);
-    if (meshCache.current[month]) {
-      L.pitMesh.add(new Graphic({ geometry: meshCache.current[month], symbol: sym }));
+    L.pitMesh.add(new Graphic({ geometry: mesh, symbol: meshSymbol(isoRef.current) }));
+    syncRoadIso();
+  }
+
+  /** Сонгосон хугацааны олборлосон блокийг зүсэлтийг тооцон зурна.
+   *  Хугацааг хэрэглэгч тогтоогоогүй бол толгойн сартай ижил. */
+  async function showBlocks() {
+    const L = layersRef.current, meta = blockInfo.current;
+    const { period, slice } = blkRef.current;
+    const month = period ?? stateRef.current.m;
+    const info = meta?.months[String(month)];
+    const req = ++blockReq.current;
+    if (!meta || !info) { L.blocks.removeAll(); return; }
+    let data: BlockData;
+    try {
+      data = await (blockCache.current[month] ??= loadBlockData(meta, info));
+    } catch (e) {
+      delete blockCache.current[month];
+      console.warn("Блокийн өгөгдөл ачаалж чадсангүй:", e);
       return;
     }
-    try {
-      const mesh = await Mesh.createFromGLTF(
-        new Point({ longitude: info.lon, latitude: info.lat, z: info.z, spatialReference: { wkid: 4326 } }),
-        info.url,
-      );
-      meshCache.current[month] = mesh;
-      if (stateRef.current.m === month) {
-        L.pitMesh.add(new Graphic({ geometry: mesh, symbol: meshSymbol(isolated) }));
-      }
-    } catch (e) {
-      console.warn("GLB ачаалж чадсангүй:", e);
+    if (req !== blockReq.current) return;
+    const mesh = buildBlockMesh(data, meta, slice);
+    L.blocks.removeAll();
+    if (mesh) L.blocks.add(new Graphic({ geometry: mesh, symbol: BLOCK_SYMBOL }));
+  }
+
+  /** Тээврийн замын тэмдэг — энгийн горимын замтай ижил өнгө, зузаан */
+  function roadSymbol() {
+    return (layersRef.current.roadNet?.renderer as any)?.symbol?.clone();
+  }
+
+  /** Сарын GLB-ээс өндрийн тор уншина. Мэш нь build_pit_mesh.py-ийн
+   *  5 м-ийн DEM-ээс үүссэн тул оройнууд нь тогтмол тор дээр байрлана:
+   *  x = зүүн, y = дээш, z = урагш (эх цэгээс метрээр).
+   *  ArcGIS-ийн `meshUtils.createElevationSampler` энэ мэш дээр өндөр
+   *  олдоггүй (газарзүйн координаттай мэш) тул торыг өөрсдөө уншина. */
+  function heightGrid(month: number): Promise<HeightSampler | null> {
+    if (!heightGridCache.current[month]) {
+      heightGridCache.current[month] = readHeightGrid(month).catch((error: unknown) => {
+        delete heightGridCache.current[month];
+        throw error;
+      });
     }
+    return heightGridCache.current[month];
+  }
+
+  async function readHeightGrid(month: number): Promise<HeightSampler | null> {
+    const info = meshInfo.current[String(month)];
+    if (!info) return null;
+    const buf = await fetch(info.url).then((r) => r.arrayBuffer());
+    const dv = new DataView(buf);
+    const jsonLen = dv.getUint32(12, true);
+    const gltf = JSON.parse(new TextDecoder().decode(new Uint8Array(buf, 20, jsonLen)));
+    const binStart = 20 + jsonLen + 8;
+    const acc = gltf.accessors[gltf.meshes[0].primitives[0].attributes.POSITION];
+    const bv = gltf.bufferViews[acc.bufferView];
+    const pos = new Float32Array(buf, binStart + (bv.byteOffset ?? 0) + (acc.byteOffset ?? 0), acc.count * 3);
+    const [x0, , z0] = acc.min as number[];
+    const [x1, , z1] = acc.max as number[];
+    /* Торны алхам: хоёр хөрш оройн хамгийн бага зай */
+    let cell = Infinity;
+    for (let i = 3; i < Math.min(pos.length, 30000); i += 3) {
+      const d = Math.abs(pos[i] - pos[i - 3]);
+      if (d > 0.01 && d < cell) cell = d;
+    }
+    const cols = Math.round((x1 - x0) / cell) + 1;
+    const rows = Math.round((z1 - z0) / cell) + 1;
+    const h = new Float32Array(cols * rows).fill(NaN);
+    for (let i = 0; i < pos.length; i += 3) {
+      const c = Math.round((pos[i] - x0) / cell);
+      const r = Math.round((pos[i + 2] - z0) / cell);
+      h[r * cols + c] = pos[i + 1] + info.z;
+    }
+    /* Газарзүйн координатыг эх цэгийн орон нутгийн (зүүн, хойд) метр рүү
+       хөрвүүлэх WGS84-ийн муруйлтын радиусууд */
+    const A = 6378137, E2 = 0.00669437999014, R = Math.PI / 180;
+    const sl = Math.sin(info.lat * R), w = 1 - E2 * sl * sl;
+    const kE = R * (A / Math.sqrt(w)) * Math.cos(info.lat * R);
+    const kN = R * (A * (1 - E2) / (w * Math.sqrt(w)));
+    /** lon/lat -> мэшийн гадаргуугийн абсолют өндөр (мэшээс гадна бол NaN) */
+    return (lon: number, lat: number) => {
+      const fc = ((lon - info.lon) * kE - x0) / cell;
+      const fr = (-(lat - info.lat) * kN - z0) / cell;
+      const c = Math.floor(fc), r = Math.floor(fr);
+      if (c < 0 || r < 0 || c >= cols - 1 || r >= rows - 1) return NaN;
+      const tc = fc - c, tr = fr - r;
+      const v00 = h[r * cols + c], v01 = h[r * cols + c + 1];
+      const v10 = h[(r + 1) * cols + c], v11 = h[(r + 1) * cols + c + 1];
+      if ([v00, v01, v10, v11].some(Number.isNaN)) {
+        /* Мэшийн ирмэг — хамгийн ойрын утгатай орой */
+        const near = [[tr, tc, v00], [tr, 1 - tc, v01], [1 - tr, tc, v10], [1 - tr, 1 - tc, v11]]
+          .filter((q) => !Number.isNaN(q[2]))
+          .sort((p, q) => p[0] + p[1] - q[0] - q[1]);
+        return near.length ? near[0][2] : NaN;
+      }
+      return (v00 * (1 - tc) + v01 * tc) * (1 - tr) + (v10 * (1 - tc) + v11 * tc) * tr;
+    };
+  }
+
+  /** Замыг сарын мэш дээр наана: нягтруулж, цэг бүрийн өндрийг мэшээс
+   *  авна. Мэшийн гадна гарсан хэсгийг тасалж хаяна — тэнд харагдах
+   *  гадаргуу байхгүй тул зам агаарт өлгөгдөнө. */
+  async function drapeRoads(month: number): Promise<Polyline[]> {
+    const L = layersRef.current;
+    const sample = await heightGrid(month);
+    if (!sample) return [];
+    const sr = { wkid: 4326 } as any;
+    const fs = await L.roadNet.queryFeatures({
+      where: "1=1", returnGeometry: true, returnZ: false, outSpatialReference: sr,
+    });
+    if (!geodeticDensifyOperator.isLoaded()) await geodeticDensifyOperator.load();
+    const out: Polyline[] = [];
+    for (const f of fs.features) {
+      const g = f.geometry as Polyline | null;
+      if (!g) continue;
+      const flat = new Polyline({ paths: g.paths, spatialReference: sr });
+      const dense = geodeticDensifyOperator.execute(flat, ROAD_STEP, { unit: "meters" } as any) as Polyline;
+      const runs: number[][][] = [];
+      for (const path of dense.paths) {
+        let run: number[][] = [];
+        for (const [lon, lat] of path) {
+          const z = sample(lon, lat);
+          if (!Number.isNaN(z)) { run.push([lon, lat, z]); continue; }
+          if (run.length > 1) runs.push(run);
+          run = [];
+        }
+        if (run.length > 1) runs.push(run);
+      }
+      if (runs.length) out.push(new Polyline({ paths: runs, hasZ: true, spatialReference: sr }));
+    }
+    return out;
+  }
+
+  /** «Зөвхөн уурхай» горимд замыг мэш дээр наасан хувилбараар солино.
+   *  Энгийн замыг тунгалаг болгож нуух нь «Давхарга» самбарын товчийг
+   *  асаалттай хэвээр үлдээнэ. */
+  async function syncRoadIso() {
+    const L = layersRef.current;
+    if (!L.roadIso) return;
+    const iso = isoRef.current;
+    L.roadNet.opacity = iso ? 0 : 1;
+    if (!iso || !L.roadNet.visible) { L.roadIso.visible = false; return; }
+    const month = stateRef.current.m;
+    if (!meshInfo.current[String(month)]) return;
+    let job = roadIsoCache.current[month];
+    if (!job) {
+      job = drapeRoads(month);
+      roadIsoCache.current[month] = job;
+      job.catch((e) => {
+        console.warn("Замыг мэш дээр нааж чадсангүй:", e);
+        delete roadIsoCache.current[month];
+      });
+    }
+    const lines = await job.catch(() => [] as Polyline[]);
+    if (stateRef.current.m !== month || !isoRef.current || !L.roadNet.visible) return;
+    const sym = roadSymbol();
+    L.roadIso.removeAll();
+    L.roadIso.addMany(lines.map((geometry) => new Graphic({ geometry, symbol: sym })));
+    L.roadIso.visible = true;
   }
 
   function zoomTo(lyr: any, where?: string, pad = 1.6) {
     const view = viewRef.current;
     if (!lyr || !view) return;
+    if (tailInspection.current) closeTailInspection(false);
     lyr.visible = true;
     const go = (ext: any) => ext && view.goTo({ target: ext.expand(pad), tilt: 58 });
     /* GraphicsLayer дээр queryExtent байдаггүй */
@@ -752,35 +1340,73 @@ export default function MineScene() {
   /* ------------------------------------------------------------- hover */
   function wireHover(view: SceneView) {
     let pending = false;
-    let last: any = null;
-
-    view.on("pointer-move", (ev) => {
-      last = ev;
-      if (pending) return;
+    let disposed = false, revision = 0, equipment = false;
+    let frame: number | null = null;
+    let last: { x: number; y: number; clientX: number; clientY: number } | null = null;
+    const container = view.container as HTMLDivElement;
+    const clear = () => {
+      ++revision;
+      last = null;
+      equipment = false;
+      if (frame !== null) cancelAnimationFrame(frame);
+      frame = null;
+      setTip(null);
+      container.style.cursor = "";
+    };
+    clearHover.current = clear;
+    const schedule = () => {
+      if (disposed || pending || frame !== null || !last) return;
+      frame = requestAnimationFrame(() => { frame = null; void check(); });
+    };
+    const check = async () => {
+      if (!last || disposed || pending || view.destroyed) return;
+      const pointer = last, request = revision;
+      const isCurrent = () => !disposed && !view.destroyed &&
+        viewRef.current === view && request === revision;
       pending = true;
-      requestAnimationFrame(async () => {
-        pending = false;
-        const res = await view.hitTest(last);
+      try {
+        const res = await view.hitTest({ x: pointer.x, y: pointer.y });
+        if (!isCurrent()) return;
         const h = hitInfo(res);
-        const el = view.container as HTMLDivElement | null;
-        if (!h) { setTip(null); if (el) el.style.cursor = "default"; return; }
-        if (el) el.style.cursor = "pointer";
-        const n = (last as any).native;
-        const r = el ? el.getBoundingClientRect() : { left: 0, top: 0 };
-        const x = n ? n.clientX : last.x + r.left;
-        const y = n ? n.clientY : last.y + r.top;
-        showFor(h, x, y);
-      });
+        equipment = h?.kind === "truck" || h?.kind === "excavator" || h?.kind === "truckAlert";
+        if (!h) { setTip(null); container.style.cursor = ""; return; }
+        container.style.cursor = equipment ? "" : "pointer";
+        void showFor(h, pointer.clientX, pointer.clientY, isCurrent);
+      } catch {
+        if (isCurrent()) clear();
+      } finally {
+        pending = false;
+        if (request !== revision) schedule();
+      }
+    };
+    const move = view.on("pointer-move", (ev) => {
+      if (view.interacting || !view.stationary) { clear(); return; }
+      ++revision;
+      const r = container.getBoundingClientRect();
+      last = { x: ev.x, y: ev.y, clientX: ev.x + r.left, clientY: ev.y + r.top };
+      schedule();
     });
+    const leave = view.on("pointer-leave", clear);
+    // Recheck a vehicle under a resting cursor as the simulated fleet moves.
+    const refresh = window.setInterval(() => {
+      if (equipment) schedule();
+    }, 150);
+    const navigation = reactiveUtils.watch(() => view.stationary, (stationary) => {
+      if (!stationary) clear();
+    });
+    const visibility = reactiveUtils.watch(
+      () => [layersRef.current.trucks.visible, layersRef.current.excavators.visible],
+      clear,
+    );
 
-    view.on("pointer-leave", () => setTip(null));
-
-    view.on("click", async (ev) => {
+    const click = view.on("click", async (ev) => {
       const h = hitInfo(await view.hitTest(ev));
       /* ArcGIS Dashboard шиг: ХООСОН зай дээр дарахад сонголт цуцлагдана.
          Урьд нь газрын зургаас тавьсан шүүлтийг зөвхөн Esc товч арилгадаг
          байсан тул хэрэглэгч гацдаг байв. */
       if (!h) { clearAll(); return; }
+      if (h.kind === "blocks" || h.kind === "hazard" || h.kind === "truckAlert" ||
+          h.kind === "truck" || h.kind === "excavator") return;
       if (h.kind === "pitmesh") { toggleIsolate(); return; }
       if (h.kind === "bld") {
         const rec = await bldLookup(h.mapPoint);
@@ -797,26 +1423,112 @@ export default function MineScene() {
         toggleDest({ ci, title: h.name, featName: "RefName = " + h.name });
       }
     });
+    return () => {
+      disposed = true;
+      clear();
+      clearHover.current = null;
+      window.clearInterval(refresh);
+      move.remove();
+      leave.remove();
+      click.remove();
+      navigation.remove();
+      visibility.remove();
+    };
+  }
+
+  /** Мэшийн гадаргуу дээрх цэгийг (mapPoint) торны блок болгоно. Цэг нь
+   *  яг хоёр нүдний зааг дээр байдаг тул камераас холдох чиглэлд 0.3–2.5 м
+   *  дотогш алхаж, эхний дүүрсэн нүдийг авна. */
+  function pickBlock(data: BlockData, meta: BlockModelMeta, slice: BlockSlice,
+                     pt: Point, view: SceneView): number {
+    const { lon, lat, z } = data.info;
+    const [kE, kN] = enuScale(lat);
+    const enu = (p: Point): [number, number, number] =>
+      [(p.longitude! - lon) * kE, (p.latitude! - lat) * kN, (p.z ?? 0) - z];
+    const hit = enu(pt), cam = enu(view.camera.position);
+    const d = [hit[0] - cam[0], hit[1] - cam[1], hit[2] - cam[2]];
+    const len = Math.hypot(d[0], d[1], d[2]) || 1;
+    for (const s of [0.3, 0.8, 1.5, 2.5]) {
+      const b = blockAt(data, meta, slice,
+        hit[0] + (d[0] / len) * s, hit[1] + (d[1] / len) * s, hit[2] + (d[2] / len) * s);
+      if (b >= 0) return b;
+    }
+    return -1;
   }
 
   function hitInfo(res: any): any {
     const L = layersRef.current;
+    // Equipment must win over the ground mesh or hazard polygon underneath it.
     for (const r of res?.results ?? []) {
       if (r.type !== "graphic" || !r.graphic) continue;
       const lyr = r.graphic.layer, a = r.graphic.attributes ?? {};
+      if (!lyr?.visible) continue;
+      if (lyr === L.truckAlerts) return { kind: "truckAlert", id: a.truckId, code: a.hazardLevel };
+      if (lyr === L.trucks && Number.isInteger(a.displayNumber)) {
+        return { kind: "truck", number: a.displayNumber };
+      }
+      if (lyr === L.excavators && Number.isInteger(a.excavatorNumber)) {
+        return { kind: "excavator", number: a.excavatorNumber };
+      }
+    }
+    for (const r of res?.results ?? []) {
+      if (r.type !== "graphic" || !r.graphic) continue;
+      const lyr = r.graphic.layer, a = r.graphic.attributes ?? {};
+      if (lyr === L.blocks) return { kind: "blocks", mapPoint: r.mapPoint };
       if (lyr === L.pitMesh) return { kind: "pitmesh" };
       /* SceneLayer-ийн атрибут эвдэрсэн тул зөвхөн байршлыг нь авна */
       if (lyr === L.bld) return { kind: "bld", mapPoint: r.mapPoint };
       if (lyr === L.pile3d) return { kind: "pile", name: a.RefName };
       if (lyr === L.pile2d) return { kind: "pile", name: a.dugaar };
+      if (lyr === L.hazard) return { kind: "hazard", code: num1(a.code), area: num1(a.Shape__Area) };
     }
     return null;
   }
 
-  async function showFor(h: any, x: number, y: number) {
-    const { m: mm, lang: lg } = stateRef.current;
+  async function showFor(h: any, x: number, y: number, isCurrent: () => boolean) {
+    const { m: mm, lang: lg, t } = stateRef.current;
     const names = COL_NAMES[lg];
 
+    if (h.kind === "truck" || h.kind === "excavator") {
+      setTip({ x, y, title: `${h.kind === "truck" ? "TRUCK" : t.tExcavator} ${h.number}`, rows: [] });
+      return;
+    }
+    if (h.kind === "hazard" || h.kind === "truckAlert") {
+      const c = Math.min(Math.max(Math.round(h.code) || 0, 0), 3);
+      const truckIndex = simRef.current?.trucks.findIndex((truck) => truck.id === h.id) ?? -1;
+      setTip({ x, y, title: h.kind === "truckAlert" ? (truckIndex >= 0 ? `TRUCK ${truckIndex + 1}` : t.lyTrucks) : t.hzTitle,
+               rows: [
+                 { label: t.hzLevel, value: `${c} · ${t.hzNames[c] ?? ""}`, color: HAZARD_COLORS[c - 1] ?? null },
+                 ...(h.kind === "hazard" ? [{ label: t.hzArea, value: fmt(h.area / 10000, 1) }] : []),
+               ] });
+      return;
+    }
+    if (h.kind === "blocks") {
+      /* Курсорын доорх ГАНЦ блок: гадаргуу дээрх цэгээс харах чиглэлийн
+         дагуу бага зэрэг дотогш орж, тэр нүдний блокийг торноос хайна. */
+      const meta = blockInfo.current, view = viewRef.current;
+      const { period, slice } = blkRef.current;
+      const data = await blockCache.current[period ?? mm]?.catch(() => null);
+      if (!isCurrent()) return;
+      const b = meta && data && view && h.mapPoint ? pickBlock(data, meta, slice, h.mapPoint, view) : -1;
+      if (!meta || !data || b < 0) { setTip(null); return; }
+      const tx = BLOCK_TEXT[lg], cell = meta.cell, c = data.cls[b];
+      const sx = data.di[b] * cell[0], sy = data.dj[b] * cell[1], sz = data.dk[b] * cell[2];
+      const rl = data.info.rl0 + data.k[b] * cell[2];
+      setTip({ x, y, title: tx.classes[c] ?? t.blkTitle,
+               key: `${ROMAN[data.info.from]} → ${ROMAN[data.info.to]} · RL ${fmt(rl, 0)}–${fmt(rl + sz, 0)} м`,
+               rows: [
+                 { label: "Cu", value: `${data.cu[b].toFixed(3)} %`, color: meta.classes[c]?.color },
+                 { label: "Mo", value: `${data.mo[b].toFixed(4)} %` },
+                 { label: tx.zone, value: tx.types[meta.types[data.typ[b]]] ?? "—" },
+                 { label: tx.domain, value: tx.domains[meta.domains[data.dom[b]]] ?? "—" },
+                 { label: tx.rclassL, value: tx.rclass[meta.rclass[data.rc[b]]] ?? "—" },
+                 { label: tx.density, value: `${data.bd[b].toFixed(2)} ${tx.densityU}` },
+                 { label: tx.mass, value: `${fmt(sx * sy * sz * data.bd[b], 0)} ${tx.massU}` },
+                 { label: tx.size, value: `${sx} × ${sy} × ${sz} м` },
+               ], hint: tx.hint });
+      return;
+    }
     if (h.kind === "pitmesh") {
       setTip({ x, y, title: t.pit, key: "DWG · multipatch",
                rows: [{ label: t.uM3, value: fmt(sumCol(mm, C.TSUL), 0), color: "var(--g4)" }],
@@ -827,6 +1539,7 @@ export default function MineScene() {
     if (h.kind === "bld") {
       setTip({ x, y, title: t.bu + " …", key: "Multipatch_EMC · FeatureServer", rows: [] });
       const rec = await bldLookup(h.mapPoint);
+      if (!isCurrent()) return;
       if (!rec) { setTip(null); return; }
       if (num1(rec.type1) !== BU_TYPE) {
         setTip({ x, y, title: rec.ner || t.bldPlain,
@@ -875,25 +1588,32 @@ export default function MineScene() {
 
   function applyIsolate(on: boolean) {
     const view = viewRef.current, map = mapRef.current, L = layersRef.current;
-    if (!view || !map) return;
+    if (!view || !map || isoRef.current === on) return;
+    if (tailInspection.current) closeTailInspection(false);
     setIsolated(on);
+    isoRef.current = on;
 
     if (on) {
+      prevEnvironment.current = {
+        background: view.environment.background?.clone(),
+        lighting: view.environment.lighting,
+        atmosphereEnabled: view.environment.atmosphereEnabled,
+        starsEnabled: view.environment.starsEnabled,
+      };
       prevVis.current = {};
       Object.keys(L).forEach((k) => {
-        if (k === ISO_KEEP || !L[k]) return;
+        if (k === ISO_KEEP || k === "truckAlerts" || !L[k]) return;
         prevVis.current[k] = L[k].visible;
         L[k].visible = false;
       });
       prevBasemap.current = map.basemap ?? null;
       map.basemap = null as any;
       map.ground.opacity = 0;
-      (map.ground as any).surfaceColor = "#12181a";
+      view.environment.background = { type: "color", color: [8, 17, 27, 0] };
       view.environment.atmosphereEnabled = false;
       view.environment.starsEnabled = false;
-      /* Шууд сүүдэр — питийн шатлал, берм, налууг харагдуулах гол хүчин зүйл */
-      (view.environment.lighting as any).directShadowsEnabled = true;
-      (view.environment.lighting as any).date = new Date("2023-06-21T09:30:00+08:00");
+      /* Камерыг дагасан гэрэл нь эргүүлж харахад шатлал, блокийг тод үлдээнэ. */
+      view.environment.lighting = new VirtualLighting({ directShadowsEnabled: true });
     } else {
       /* Унтраасан яг тэр давхаргуудыг өмнөх төлөвт нь буцаана */
       Object.keys(prevVis.current).forEach((k) => {
@@ -902,8 +1622,13 @@ export default function MineScene() {
       /* Хэрэглэгч галерейгээс сонгосон суурь зургийг сэргээнэ */
       map.basemap = prevBasemap.current ?? Basemap.fromId("satellite")!;
       map.ground.opacity = GROUND_OPACITY[groundStep];
-      view.environment.atmosphereEnabled = true;
-      (view.environment.lighting as any).directShadowsEnabled = false;
+      const environment = prevEnvironment.current;
+      if (environment) {
+        view.environment.background = environment.background;
+        view.environment.lighting = environment.lighting;
+        view.environment.atmosphereEnabled = environment.atmosphereEnabled;
+        view.environment.starsEnabled = environment.starsEnabled;
+      }
     }
 
     document.body.classList.toggle("isolated", on);
@@ -911,8 +1636,10 @@ export default function MineScene() {
        бодит мэштэй яг нэг зайг эзэлж, хоёулаа бүдгэрдэг. Хэрэгтэй бол
        «Давхарга»-аас гараар асааж болно. */
     L.pitMesh.visible = on;
+    if (L.blocks) L.blocks.visible = on;
     L.pitMesh.graphics.forEach((g: Graphic) => { g.symbol = meshSymbol(on); });
     if (on) setTimeout(() => zoomTo(L.pitMesh, undefined, 1.05), 60);
+    syncRoadIso();
     syncVisible();
   }
 
@@ -920,16 +1647,36 @@ export default function MineScene() {
   useEffect(() => {
     if (!ready) return;
     showMesh(m);
+    showBlocks();
     rebuildFlow();          /* машины тоо сарын тонноор өөрчлөгдөнө */
   }, [m, ready]); // eslint-disable-line
+
+  /* Блокийн хугацаа / зүсэлт өөрчлөгдөхөд — гулсуулагчийг чирэх үед
+     кадр бүрт нэг л удаа дахин зурна */
+  useEffect(() => {
+    if (!ready) return;
+    if (blockFrame.current !== null) cancelAnimationFrame(blockFrame.current);
+    blockFrame.current = requestAnimationFrame(() => { blockFrame.current = null; void showBlocks(); });
+  }, [blkPeriod, blkSlice, ready]); // eslint-disable-line
+
+  /* Өөрчлөлтийн тодруулгыг асаах / унтраах */
+  useEffect(() => {
+    if (ready) void paintPit(m);
+  }, [pitChange]); // eslint-disable-line
 
   /* ------------------------------------------------------- Esc товчлуур */
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && tailInspection.current) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        closeTailInspection();
+        return;
+      }
       if (e.key === "Escape" && isolated) applyIsolate(false);
     };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
   });
 
   /* --------------------------------------------- ил уурхайн сервис нэмэх */
@@ -958,35 +1705,138 @@ export default function MineScene() {
   const rows: { key: string; n: string; c: string }[] = [
     ...(L.pitSvc ? [{ key: "pitSvc", n: "Ил уурхай · сервис", c: "var(--g6)" }] : []),
     { key: "im",      n: t.lyIm,     c: "#9aa6b2" },
-    { key: "pitMesh", n: t.lyMesh,   c: "#8d7f70" },
+    { key: "pitMesh", n: t.lyMesh,   c: isolated ? "#c8bfb0" : "#8d7f70" },
+    ...(hasBlocks ? [{ key: "blocks", n: t.lyBlocks, c: blockInfo.current?.classes[2]?.color ?? "#f2d132" }] : []),
     { key: "pile3d",  n: t.lyPile3d, c: PILE_HEX },
     { key: "pile2d",  n: t.lyPile2d, c: PILE_EDGE_HEX },
     { key: "dam",     n: t.lyDam,    c: "var(--water)" },
+    { key: "hazard",  n: t.lyHazard, c: HAZARD_COLORS[2] },
     { key: "roadNet", n: t.lyRoadNet, c: "#c9b57a" },
     { key: "bld",     n: t.lyBld,    c: BLD_COLOR.bu },
     { key: "trucks",  n: t.lyTrucks, c: TRUCK_COLOR.bu },
+    { key: "excavators", n: t.lyExcavators, c: "#f5b818" },
     { key: "tails",   n: t.lyTails,  c: "var(--water)" },
   ];
 
   return (
     <>
-      <div className="ph">
-        <h2>{t.pScene}</h2>
-        <button className="ghost sm" aria-pressed={isolated} onClick={toggleIsolate}
-                style={{ marginLeft: "auto" }}>{t.btnIso}</button>
-        <button className="ghost sm" aria-pressed={layersOpen}
-                onClick={() => setLayersOpen((v) => !v)}>{t.btnLayers}</button>
-        {/* Зөвхөн газрын зургийг дэлгэц дүүрэн. Esc-ээр буцна. */}
-        <button className="ghost sm ico" aria-pressed={mapMax}
-                onClick={() => setMapMax(!mapMax)}
-                title={(mapMax ? t.btnFullOff : t.btnFull) + " · " + t.btnFullHint}
-                aria-label={mapMax ? t.btnFullOff : t.btnFull}>
-          {mapMax ? "⤡" : "⤢"}
-        </button>
-      </div>
+      {/* Газрын зургийн товчнууд — Esri-ийн зүүн дээд баганад, суурь
+          зургийн дүрсийн доор. Нэрийг нь title-д үлдээв. */}
+      {createPortal(
+        <>
+          <button className="esri-widget--button" aria-pressed={isolated} onClick={toggleIsolate}
+                  title={t.btnIso} aria-label={t.btnIso}>
+            {/* ил уурхай — доош нарийссан шатлал */}
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"
+                 strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M2.5 6h19" /><path d="M5 6v3.5h14V6" /><path d="M7.5 9.5V13h9V9.5" />
+              <path d="M10 13v3.5h4V13" />
+            </svg>
+          </button>
+          <button className="esri-widget--button" aria-pressed={tailInspect}
+                  disabled={tailStatus !== "ready"}
+                  onClick={() => tailInspect ? closeTailInspection() : inspectTailings()}
+                  title={tailStatus === "loading" ? t.flowLoading : tailStatus === "error" ? t.flowUnavailable : t.flowInspect}
+                  aria-label={t.flowInspect}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"
+                 strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M12 3c-2.4 3.6-6 7-6 11a6 6 0 0 0 12 0c0-4-3.6-7.4-6-11Z" />
+              <path d="M9 14h6m-2-2 2 2-2 2" />
+            </svg>
+          </button>
+          <button className="esri-widget--button" aria-pressed={layersOpen}
+                  onClick={() => {
+                    if (!layersOpen) closeTailInspection(false);
+                    setLayersOpen((v) => !v);
+                  }} title={t.btnLayers} aria-label={t.btnLayers}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"
+                 strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="m12 3.5 8.5 4.5-8.5 4.5L3.5 8z" /><path d="m3.5 12 8.5 4.5 8.5-4.5" />
+              <path d="m3.5 16 8.5 4.5 8.5-4.5" />
+            </svg>
+          </button>
+          {/* Зөвхөн газрын зургийг дэлгэц дүүрэн. Esc-ээр буцна. */}
+          <button className="esri-widget--button" aria-pressed={mapMax}
+                  onClick={() => setMapMax(!mapMax)}
+                  title={(mapMax ? t.btnFullOff : t.btnFull) + " · " + t.btnFullHint}
+                  aria-label={mapMax ? t.btnFullOff : t.btnFull}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"
+                 strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              {mapMax
+                ? <path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5" />
+                : <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />}
+            </svg>
+          </button>
+        </>,
+        btnHost,
+      )}
 
-      <div className="mapwrap">
+      <div className={"mapwrap" + (mapMax ? " with-truck-strip" : "")}>
         <div id="viewDiv" ref={divRef} />
+        {tailInspect && (
+          <TailingsInspector transparency={tailTransparency}
+            sliced={tailSliced} depth={TAIL_DEPTH} diameter={PIPE_D}
+            onTransparencyChange={changeTailTransparency}
+            onTransparencyToggle={toggleTailTransparency} onSliceToggle={toggleTailSlice}
+            onFocus={() => focusTailings()} onOverview={() => focusTailings(false)}
+            onClose={() => closeTailInspection()} />
+        )}
+        {ready && visible.trucks && hazardStatus !== "ready" && (
+          <div className="hazard-status" role="status">
+            <span>{hazardStatus === "error" ? t.hzUnavailable : t.hzLoading}</span>
+            {hazardStatus === "error" && (
+              <button className="ghost sm" onClick={() => void loadHazardZones()}>{t.hzRetry}</button>
+            )}
+          </div>
+        )}
+        {mapMax && (
+          <TruckTelemetryStrip
+            trucks={truckTelemetry}
+            lang={lang}
+            selectedId={selectedTruck}
+            onSelect={focusTruck}
+            emptyState={!ready ? "loading" : !visible.trucks ? "hidden" : "empty"}
+          />
+        )}
+
+        {/* Тусгаарлах горимд толгойн сарын сонголт харагдахгүй байж болох
+            тул (бүтэн дэлгэц, доош гүйлгэсэн байдал) газрын зураг дээр
+            өөрөө нэг хувилбар гаргана. Ижил `setM`-ийг дуудна — хоёр
+            газарт хоёр өөр төлөв үүсэхгүй. */}
+        {isolated && (
+          <div className="mmonths" role="group" aria-label={t.lMonth}>
+            {["I", "II", "III", "IV", "V", "VI"].map((lbl, i) => (
+              <button key={lbl} aria-pressed={i + 1 === m}
+                      aria-label={`${i + 1}-р сар`}
+                      onClick={() => setM(i + 1)}>{lbl}</button>
+            ))}
+            {/* Өмнөх сарын хэмжилтээс өөрчлөгдсөн гадаргуу — улаанаар */}
+            <span className="mmsep" aria-hidden="true" />
+            <button className="mchg" aria-pressed={pitChange && m > 1} disabled={m === 1}
+                    onClick={() => setPitChange((v) => !v)}
+                    title={m === 1 ? t.chgNone : t.chgHint}>
+              <i aria-hidden="true" />
+              {t.chgBtn}
+              {pitChange && m > 1 && changeHa !== null && <small>{fmt(changeHa, 1)} {t.uHa}</small>}
+            </button>
+          </div>
+        )}
+
+        {/* Олборлосон блокийн Cu агуулгын тайлбар — зөвхөн «Зөвхөн уурхай»
+            горимд, блокийн давхарга асаалттай үед */}
+        {isolated && hasBlocks && visible.blocks && blockInfo.current && (
+          <BlockLegend
+            meta={blockInfo.current}
+            period={blkPeriod ?? m}
+            pinned={blkPeriod !== null}
+            month={m}
+            lang={lang}
+            onPeriod={(p) => setBlkPeriod(p === m ? null : p)}
+            onFollow={() => setBlkPeriod(null)}
+            slice={blkSlice}
+            onSlice={setBlkSlice}
+          />
+        )}
 
 
         {layersOpen && (
@@ -999,13 +1849,20 @@ export default function MineScene() {
                 return (
                   <div key={r.key} style={{ display: "flex", alignItems: "center", gap: 2 }}>
                     <button className="lrow" aria-pressed={!!visible[r.key]}
-                            onClick={() => { lyr.visible = !lyr.visible; syncVisible(); }}>
+                            onClick={() => {
+                              const shown = !lyr.visible;
+                              if (r.key === "tails") closeTailInspection(false);
+                              lyr.visible = shown;
+                              syncVisible();
+                            }}>
                       <span className="sw" style={{ background: r.c }} />
                       <span>{r.n}</span>
                       <span className="tg" />
                     </button>
-                    <button className="zoomto" title={t.zoomTo}
-                            onClick={() => zoomTo(lyr, r.key === "bld" ? `type1 = ${BU_TYPE}` : undefined)}>⌖</button>
+                    <button className="zoomto" title={r.key === "tails" ? t.flowInspect : t.zoomTo}
+                            disabled={r.key === "tails" && tailStatus !== "ready"}
+                            onClick={() => r.key === "tails" ? inspectTailings()
+                              : zoomTo(lyr, r.key === "bld" ? `type1 = ${BU_TYPE}` : undefined)}>⌖</button>
                   </div>
                 );
               })}
@@ -1015,7 +1872,7 @@ export default function MineScene() {
             <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
               {GROUND_OPACITY.map((o, i) => (
                 <button key={i} className="ghost sm" aria-pressed={groundStep === i}
-                        onClick={() => { setGroundStep(i); mapRef.current!.ground.opacity = o; }}>
+                        onClick={() => { closeTailInspection(false); setGroundStep(i); mapRef.current!.ground.opacity = o; }}>
                   {GROUND_NM[lang][i]}
                 </button>
               ))}

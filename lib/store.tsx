@@ -14,6 +14,10 @@ export interface TipRow {
   label: string;
   value: string;
   color?: string | null;
+  /** Нийтэд эзлэх хувь (0–100) — өгвөл тусдаа баганад */
+  pct?: number;
+  /** Дүнгийн мөр — дээрээс зураасаар тусгаарлагдана */
+  total?: boolean;
 }
 export interface TipState {
   x: number;
@@ -22,6 +26,8 @@ export interface TipState {
   key?: string;
   rows: TipRow[];
   hint?: string;
+  /** Утгуудын нэгж — толгойн баруун талд нэг удаа бичигдэнэ */
+  unit?: string;
 }
 
 /** «auto» = үйлдлийн системийн тохиргоог дагана */
