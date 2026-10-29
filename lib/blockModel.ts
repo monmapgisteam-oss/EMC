@@ -27,13 +27,20 @@ export interface BlockMonthInfo {
   axisI: [number, number]; axisJ: [number, number];
   /** k = 0 нүдний доод өндөр (RL, м) */
   rl0: number;
+  /** Торны (0,0,0) нүдний Micromine-ийн торны индекс */
+  lo?: [number, number, number];
+  /** Хуваарилалтын огноо (Assign2023), жишээ нь "20230203" */
+  assign?: string | null;
   kt: number; km3: number; cu: number; mo: number; share: number[];
 }
 
 export interface BlockModelMeta {
   classes: BlockClass[];
   domains: string[]; types: string[]; rclass: string[];
+  projects?: string[];
   cell: [number, number, number];
+  /** Micromine-ийн локал тор: эх цэг, эргүүлэх тэнхлэг, өнцөг (локал → UTM) */
+  grid?: { origin: [number, number, number]; pivot: [number, number]; rot: number };
   months: Record<string, BlockMonthInfo>;
 }
 
@@ -44,6 +51,9 @@ export interface BlockData {
   i: Uint16Array; j: Uint16Array; k: Uint16Array;
   di: Uint8Array; dj: Uint8Array; dk: Uint8Array;
   dom: Uint8Array; typ: Uint8Array; rc: Uint8Array;
+  /** Нэмэлт талбарууд (хуучин .bin-д байхгүй бол null) */
+  cui: Float32Array | null; cuo: Float32Array | null; cuoi: Float32Array | null;
+  proj: Uint8Array | null;
   /** Cu агуулгын ангиллын индекс */
   cls: Uint8Array;
   /** Нүдний шугаман индекс -> блокийн индекс */
@@ -71,6 +81,9 @@ export async function loadBlockData(meta: BlockModelMeta, info: BlockMonthInfo):
   const cu = f32(), mo = f32(), bd = f32();
   const i = u16(), j = u16(), k = u16();
   const di = u8(), dj = u8(), dk = u8(), dom = u8(), typ = u8(), rc = u8();
+  const extra = buf.byteLength >= off + 13 * n;
+  const cui = extra ? f32() : null, cuo = extra ? f32() : null, cuoi = extra ? f32() : null;
+  const proj = extra ? u8() : null;
 
   const mins = meta.classes.map((c) => c.min);
   const cls = new Uint8Array(n);
@@ -88,7 +101,7 @@ export async function loadBlockData(meta: BlockModelMeta, info: BlockMonthInfo):
         for (let a = 0; a < di[b]; a++)
           cells.set(((k[b] + c) * ny + (j[b] + bb)) * nx + (i[b] + a), b);
   }
-  return { info, n, cu, mo, bd, i, j, k, di, dj, dk, dom, typ, rc, cls, cells };
+  return { info, n, cu, mo, bd, i, j, k, di, dj, dk, dom, typ, rc, cui, cuo, cuoi, proj, cls, cells };
 }
 
 /** Зүсэлтийн хязгаар (нүдээр) — [lo, hi) мужид байгаа нүд л үлдэнэ */
@@ -206,6 +219,13 @@ export const BLOCK_TEXT = {
     zone: "Исэлдлийн бүс", domain: "Геологийн домэйн", rclassL: "Нөөцийн ангилал",
     density: "Нягт", densityU: "т/м³", mass: "Масс", massU: "т", size: "Хэмжээ",
     hint: "Cu ≥ 0.25 % — хүдэр, < 0.25 % — хоосон чулуулаг",
+    clickHint: "Дарж бүх мэдээллийг харна",
+    projects: { NW: "Баруун хойд", CEN: "Төв" } as Record<string, string>,
+    gGeneral: "Ерөнхий", gGrade: "Агуулга", gGeology: "Геологи", gMass: "Хэмжээ, масс", gPos: "Байрлал",
+    period: "Хугацаа", assign: "Хуваарилсан огноо", project: "Уурхайн хэсэг", cuClass: "Cu ангилал",
+    cu: "Cu агуулга", mo: "Mo агуулга", cuo: "Исэлдсэн Cu", cuoi: "Исэлдлийн индекс", cui: "CUI",
+    volume: "Эзлэхүүн", cuMetal: "Cu металл", moMetal: "Mo металл",
+    local: "Micromine тор", utm: "UTM 48N", rl: "Өндөр (RL)",
   },
   en: {
     classes: ["Waste rock", "Low-grade ore", "Medium-grade ore", "High-grade ore", "Very high-grade ore"],
@@ -216,5 +236,105 @@ export const BLOCK_TEXT = {
     zone: "Oxidation zone", domain: "Geological domain", rclassL: "Resource class",
     density: "Density", densityU: "t/m³", mass: "Mass", massU: "t", size: "Size",
     hint: "Cu ≥ 0.25 % is ore, < 0.25 % is waste rock",
+    clickHint: "Click for all attributes",
+    projects: { NW: "North-west", CEN: "Central" } as Record<string, string>,
+    gGeneral: "General", gGrade: "Grade", gGeology: "Geology", gMass: "Size & mass", gPos: "Position",
+    period: "Period", assign: "Assigned", project: "Pit area", cuClass: "Cu class",
+    cu: "Cu grade", mo: "Mo grade", cuo: "Oxide Cu", cuoi: "Oxidation index", cui: "CUI",
+    volume: "Volume", cuMetal: "Cu metal", moMetal: "Mo metal",
+    local: "Micromine grid", utm: "UTM 48N", rl: "Elevation (RL)",
   },
 } satisfies Record<Lang, unknown>;
+
+export interface BlockDetailRow { label: string; code?: string; value: string; color?: string }
+export interface BlockDetail {
+  /** Сонголтыг ялгах түлхүүр — ижил блок дээр дахин дарахад цуцлагдана */
+  id: string;
+  title: string;
+  color: string;
+  sub: string;
+  groups: { title: string; rows: BlockDetailRow[] }[];
+}
+
+/** Нэг блокийн БҮХ талбар — блок дээр дарахад зүүн талын картад харуулна */
+export function blockDetail(data: BlockData, meta: BlockModelMeta, b: number, lang: Lang,
+                            roman: string[], fmt: (v: number, d?: number) => string): BlockDetail {
+  const tx = BLOCK_TEXT[lang];
+  const info = data.info, cell = meta.cell, c = data.cls[b];
+  const sx = data.di[b] * cell[0], sy = data.dj[b] * cell[1], sz = data.dk[b] * cell[2];
+  const vol = sx * sy * sz, mass = vol * data.bd[b];
+  const rl = info.rl0 + data.k[b] * cell[2];
+  const pct = (v: number, d: number) => `${v.toFixed(d)} %`;
+  const color = meta.classes[c]?.color ?? "#888";
+  const period = `${roman[info.from] ?? info.from} → ${roman[info.to] ?? info.to}`;
+
+  const general: BlockDetailRow[] = [
+    { label: tx.period, value: period },
+    { label: tx.cuClass, value: tx.classes[c] ?? "—", color },
+  ];
+  if (info.assign) {
+    const a = info.assign;
+    general.push({ label: tx.assign, code: "Assign2023", value: `${a.slice(0, 4)}-${a.slice(4, 6)}-${a.slice(6, 8)}` });
+  }
+  if (data.proj && meta.projects) {
+    const p = meta.projects[data.proj[b]];
+    general.push({ label: tx.project, code: "Project", value: p ? `${tx.projects[p] ?? p} (${p})` : "—" });
+  }
+
+  const grade: BlockDetailRow[] = [
+    { label: tx.cu, code: "CU_OK", value: pct(data.cu[b], 3), color },
+    { label: tx.mo, code: "MO_OK", value: pct(data.mo[b], 4) },
+  ];
+  if (data.cuo) grade.push({ label: tx.cuo, code: "CUO", value: pct(data.cuo[b], 4) });
+  if (data.cuoi) grade.push({ label: tx.cuoi, code: "CUOI", value: pct(data.cuoi[b], 2) });
+  if (data.cui) grade.push({ label: tx.cui, code: "CUI", value: pct(data.cui[b], 4) });
+
+  const code = (list: string[], v: number) => list[v] ?? "";
+  const geology: BlockDetailRow[] = [
+    { label: tx.zone, code: "TYPE", value: named(tx.types, code(meta.types, data.typ[b])) },
+    { label: tx.domain, code: "DOMAIN", value: named(tx.domains, code(meta.domains, data.dom[b])) },
+    { label: tx.rclassL, code: "CLASS", value: named(tx.rclass, code(meta.rclass, data.rc[b])) },
+  ];
+
+  const massRows: BlockDetailRow[] = [
+    { label: tx.size, code: "_EAST × _NORTH × _RL", value: `${sx} × ${sy} × ${sz} м` },
+    { label: tx.volume, value: `${fmt(vol, 0)} м³` },
+    { label: tx.density, code: "BD", value: `${data.bd[b].toFixed(3)} ${tx.densityU}` },
+    { label: tx.mass, value: `${fmt(mass, 0)} ${tx.massU}` },
+    { label: tx.cuMetal, value: `${fmt(mass * data.cu[b] / 100, 1)} ${tx.massU}` },
+    { label: tx.moMetal, value: `${fmt(mass * data.mo[b] / 100 * 1000, 0)} кг` },
+  ];
+
+  const pos: BlockDetailRow[] = [{ label: tx.rl, code: "RL", value: `${fmt(rl, 2)}–${fmt(rl + sz, 2)} м` }];
+  if (meta.grid && info.lo) {
+    const g = meta.grid;
+    const e = g.origin[0] + (info.lo[0] + data.i[b]) * cell[0] + sx / 2;
+    const n = g.origin[1] + (info.lo[1] + data.j[b]) * cell[1] + sy / 2;
+    const r = (g.rot * Math.PI) / 180, dx = e - g.pivot[0], dy = n - g.pivot[1];
+    const ue = g.pivot[0] + dx * Math.cos(r) - dy * Math.sin(r);
+    const un = g.pivot[1] + dx * Math.sin(r) + dy * Math.cos(r);
+    pos.push(
+      { label: tx.local, code: "EAST / NORTH", value: `${e.toFixed(1)} / ${n.toFixed(1)}` },
+      { label: tx.utm, code: "E / N", value: `${ue.toFixed(1)} / ${un.toFixed(1)}` },
+    );
+  }
+
+  return {
+    id: `${info.to}:${b}`,
+    title: tx.classes[c] ?? "—",
+    color,
+    sub: `${period} · RL ${fmt(rl, 0)}–${fmt(rl + sz, 0)} м · Cu ${data.cu[b].toFixed(3)} %`,
+    groups: [
+      { title: tx.gGeneral, rows: general },
+      { title: tx.gGrade, rows: grade },
+      { title: tx.gGeology, rows: geology },
+      { title: tx.gMass, rows: massRows },
+      { title: tx.gPos, rows: pos },
+    ],
+  };
+}
+
+function named(dict: Record<string, string>, key: string): string {
+  if (!key) return "—";
+  return dict[key] ? `${dict[key]} (${key})` : key;
+}

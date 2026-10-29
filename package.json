@@ -9,6 +9,7 @@
     "start": "next start -p 3100",
     "lint": "next lint",
     "data:excel": "python tools/build_excel.py",
+    "data:pitgrid": "python tools/build_pit_grid.py",
     "data:pit": "\"C:\\Program Files\\ArcGIS\\Pro\\bin\\Python\\envs\\arcgispro-py3\\python.exe\" tools/build_pit_mesh.py",
     "data:blocks": "python tools/build_block_mesh.py",
     "data:truck": "python tools/build_truck.py",

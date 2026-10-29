@@ -38,7 +38,7 @@ import { MON_L } from "@/lib/i18n";
 import {
   SVC, C, COL_NAMES, ELEV_URL, GROUND_OPACITY, GROUND_NM,
   BU_TYPE, BLD_COLOR, PILE_COLOR, PILE_HEX, PILE_EDGE, PILE_EDGE_HEX,
-  PILE2COL, TRUCK_COLOR, pileWhere,
+  PILE2COL, TRUCK_COLOR, pileWhere, PIT_SVC,
 } from "@/lib/config";
 import { cuOf, metalSum, moOf, sumCol } from "@/lib/excel";
 import {
@@ -50,13 +50,15 @@ import { createTailings, type TailingsFlow } from "@/lib/tailings";
 import {
   BLOCK_TEXT, NO_SLICE, blockAt, buildBlockMesh, loadBlockData,
   type BlockData, type BlockModelMeta, type BlockSlice,
+  blockDetail,
 } from "@/lib/blockModel";
 import { MONTH_COLORS, paintMonths, pitColors, type PitColors } from "@/lib/pitSurface";
+import { fetchPitMesh, loadPitGrid, type PitGrid } from "@/lib/pitSource";
 import { compileHazardZones, hazardLevelAt, type HazardIndex } from "@/lib/hazards";
 import { createHazardAlerts, type HazardAlerts } from "@/lib/hazardAlerts";
 import { buildTruckTelemetry, type TruckTelemetry, type TerrainElevationSample } from "@/lib/truckTelemetry";
 import { placeExcavators } from "@/lib/excavators";
-import BlockLegend from "./BlockLegend";
+import BlockLegend, { BlockSlicePanel } from "./BlockLegend";
 import TruckTelemetryStrip from "./TruckTelemetryStrip";
 import TailingsInspector from "./TailingsInspector";
 
@@ -130,7 +132,7 @@ function waitStableSize(el: HTMLElement, timeoutMs = 2000): Promise<void> {
 
 export default function MineScene() {
   const store = useStore();
-  const { m, setM, lang, t, toggleDest, clearAll, setTip, mapMax, setMapMax } = store;
+  const { m, setM, lang, t, toggleDest, clearAll, setTip, setSel, mapMax, setMapMax } = store;
 
   const divRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<SceneView | null>(null);
@@ -151,6 +153,8 @@ export default function MineScene() {
   const isoRef = useRef(false);
   const bldCache = useRef<Record<string, any>>({});
   const meshInfo = useRef<Record<string, MeshInfo>>({});
+  /** Питийн мэшийн эх цэг ба 5 м-ийн тор — AGOL-оос татсан гадаргууг үүн дээр буулгана */
+  const pitGrid = useRef<PitGrid | null>(null);
   const blockInfo = useRef<BlockModelMeta | null>(null);
   const blockCache = useRef<Record<number, Promise<BlockData>>>({});
   const blockReq = useRef(0);
@@ -170,19 +174,18 @@ export default function MineScene() {
     d.className = "mapbtns esri-component";
     return d;
   });
+  /* Блокийн зүсэлтийн самбарын сав — Esri Expand-ийн агуулга, React portal-аар зурна */
+  const [sliceHost] = useState(() => document.createElement("div"));
+  const sliceExpand = useRef<Expand | null>(null);
   const [isolated, setIsolated] = useState(false);
   const [hasBlocks, setHasBlocks] = useState(false);
-  /* Блок загварын хугацаа: null — толгойн сартай хамт солигдоно, тоо —
-     хэрэглэгч өөр сарын блокийг тогтоож сонгосон (сар солиход хэвээр). */
-  const [blkPeriod, setBlkPeriod] = useState<number | null>(null);
   const [blkSlice, setBlkSlice] = useState<BlockSlice>(NO_SLICE);
-  /* Өмнөх сараас өөрчлөгдсөн гадаргууг улаанаар харуулах эсэх */
   /* Гадаргуугийн өөрчлөлт: унтраалттай / өмнөх сараас / бүх сарын нийт */
   const [pitChange, setPitChange] = useState<"off" | "month" | "all">("month");
   const [changeHa, setChangeHa] = useState<number | null>(null);
   const [allChg, setAllChg] = useState<{ total: number; byMonth: Record<number, number> } | null>(null);
-  const blkRef = useRef({ period: blkPeriod, slice: blkSlice, change: pitChange });
-  blkRef.current = { period: blkPeriod, slice: blkSlice, change: pitChange };
+  const blkRef = useRef({ slice: blkSlice, change: pitChange });
+  blkRef.current = { slice: blkSlice, change: pitChange };
   const [layersOpen, setLayersOpen] = useState(false);
   const [groundStep, setGroundStep] = useState(0);
   const [tailInspect, setTailInspect] = useState(false);
@@ -502,6 +505,13 @@ export default function MineScene() {
         }),
         "top-left",
       );
+      /* Блок моделийн ЗҮСЭЛТ — суурь зургийн дүрсийн доор өөрийн дүрстэй,
+         үргэлж харагдана (зүсэлт сонгоход Open pit горим руу шилжинэ). */
+      sliceExpand.current = new Expand({
+        view, group: "top-left", expandIcon: "slice",
+        expandTooltip: stateRef.current.t.sliceTip, content: sliceHost,
+      });
+      view.ui.add(sliceExpand.current, "top-left");
       /* Esri-гийн ХЭМЖИЛТ — шулуун зай (хэвтээ/босоо зөрүүтэй) ба талбай.
          Суурь зургийн дүрсийн доор; нэг бүлэгт тул нэг нь нээгдэхэд нөгөө
          нь хаагдана. */
@@ -533,6 +543,17 @@ export default function MineScene() {
       .then((r) => r.json())
       .then(async (j) => {
         meshInfo.current = j;
+        /* Сарын гадаргуу AGOL-оос (PIT_SVC) — тор ачаалагдахгүй бол GLB-ээр */
+        pitGrid.current = await loadPitGrid().catch((e) => {
+          console.warn("pit_grid.json ачаалж чадсангүй — GLB ашиглана:", e);
+          return null;
+        });
+        const g = pitGrid.current;
+        if (g) {
+          for (const k of Object.keys(PIT_SVC)) {
+            meshInfo.current[k] ??= { url: "", lon: g.lon, lat: g.lat, z: g.z };
+          }
+        }
         /* Блок загвар байхгүй байсан ч газрын зураг ажиллах ёстой */
         blockInfo.current = await fetch("/data/blocks.json")
           .then((r) => (r.ok ? r.json() : null)).catch(() => null);
@@ -1082,14 +1103,28 @@ export default function MineScene() {
     } as any;
   }
 
+  /** Сарын питийн гадаргуу: AGOL-ын 3D object давхаргаас (lib/pitSource.ts),
+   *  амжилтгүй бол тухайн сарын локал GLB-ээр (public/data/pit_NN.glb). */
   function loadPitMesh(month: number): Promise<Mesh | null> {
+    const cached = meshLoad.current[month];
+    if (cached) return cached;
     const info = meshInfo.current[String(month)];
     if (!info) return Promise.resolve(null);
-    return meshLoad.current[month] ??= Mesh.createFromGLTF(
-      new Point({ longitude: info.lon, latitude: info.lat, z: info.z, spatialReference: { wkid: 4326 } }),
-      info.url,
-    ).catch((e) => {
-      console.warn("GLB ачаалж чадсангүй:", e);
+    const glb = () => info.url
+      ? Mesh.createFromGLTF(
+          new Point({ longitude: info.lon, latitude: info.lat, z: info.z, spatialReference: { wkid: 4326 } }),
+          info.url,
+        )
+      : Promise.reject(new Error(`${month}-р сарын GLB байхгүй`));
+    const svc = PIT_SVC[month], grid = pitGrid.current;
+    const load = svc && grid
+      ? fetchPitMesh(svc, grid).catch((e) => {
+          console.warn(`${month}-р сарын гадаргууг AGOL-оос ачаалж чадсангүй — GLB ашиглана:`, e);
+          return glb();
+        })
+      : glb();
+    return meshLoad.current[month] = load.catch((e) => {
+      console.warn("Питийн гадаргуу ачаалж чадсангүй:", e);
       delete meshLoad.current[month];
       return null;
     });
@@ -1160,12 +1195,12 @@ export default function MineScene() {
     syncRoadIso();
   }
 
-  /** Сонгосон хугацааны олборлосон блокийг зүсэлтийг тооцон зурна.
-   *  Хугацааг хэрэглэгч тогтоогоогүй бол толгойн сартай ижил. */
+  /** Сонгосон сарын (өмнөх сараас тэр сар хүртэл) олборлосон блокийг
+   *  зүсэлтийг тооцон зурна. Хугацаа нь толгойн сартай үргэлж ижил. */
   async function showBlocks() {
     const L = layersRef.current, meta = blockInfo.current;
-    const { period, slice } = blkRef.current;
-    const month = period ?? stateRef.current.m;
+    const { slice } = blkRef.current;
+    const month = stateRef.current.m;
     const info = meta?.months[String(month)];
     const req = ++blockReq.current;
     if (!meta || !info) { L.blocks.removeAll(); return; }
@@ -1188,11 +1223,10 @@ export default function MineScene() {
     return (layersRef.current.roadNet?.renderer as any)?.symbol?.clone();
   }
 
-  /** Сарын GLB-ээс өндрийн тор уншина. Мэш нь build_pit_mesh.py-ийн
-   *  5 м-ийн DEM-ээс үүссэн тул оройнууд нь тогтмол тор дээр байрлана:
-   *  x = зүүн, y = дээш, z = урагш (эх цэгээс метрээр).
-   *  ArcGIS-ийн `meshUtils.createElevationSampler` энэ мэш дээр өндөр
-   *  олдоггүй (газарзүйн координаттай мэш) тул торыг өөрсдөө уншина. */
+  /** Сарын питийн мэшээс өндрийн тор уншина. Мэшийн оройнууд 5 м-ийн
+   *  тогтмол тор дээр байрлана: x = зүүн, y = хойд, z = дээш (эх цэгээс
+   *  метрээр). ArcGIS-ийн `meshUtils.createElevationSampler` энэ мэш дээр
+   *  өндөр олдоггүй (газарзүйн координаттай мэш) тул торыг өөрсдөө уншина. */
   function heightGrid(month: number): Promise<HeightSampler | null> {
     if (!heightGridCache.current[month]) {
       heightGridCache.current[month] = readHeightGrid(month).catch((error: unknown) => {
@@ -1206,16 +1240,14 @@ export default function MineScene() {
   async function readHeightGrid(month: number): Promise<HeightSampler | null> {
     const info = meshInfo.current[String(month)];
     if (!info) return null;
-    const buf = await fetch(info.url).then((r) => r.arrayBuffer());
-    const dv = new DataView(buf);
-    const jsonLen = dv.getUint32(12, true);
-    const gltf = JSON.parse(new TextDecoder().decode(new Uint8Array(buf, 20, jsonLen)));
-    const binStart = 20 + jsonLen + 8;
-    const acc = gltf.accessors[gltf.meshes[0].primitives[0].attributes.POSITION];
-    const bv = gltf.bufferViews[acc.bufferView];
-    const pos = new Float32Array(buf, binStart + (bv.byteOffset ?? 0) + (acc.byteOffset ?? 0), acc.count * 3);
-    const [x0, , z0] = acc.min as number[];
-    const [x1, , z1] = acc.max as number[];
+    const mesh = await loadPitMesh(month);
+    if (!mesh) return null;
+    const pos = mesh.vertexAttributes.position;
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (let i = 0; i < pos.length; i += 3) {
+      if (pos[i] < x0) x0 = pos[i]; if (pos[i] > x1) x1 = pos[i];
+      if (pos[i + 1] < y0) y0 = pos[i + 1]; if (pos[i + 1] > y1) y1 = pos[i + 1];
+    }
     /* Торны алхам: хоёр хөрш оройн хамгийн бага зай */
     let cell = Infinity;
     for (let i = 3; i < Math.min(pos.length, 30000); i += 3) {
@@ -1223,12 +1255,12 @@ export default function MineScene() {
       if (d > 0.01 && d < cell) cell = d;
     }
     const cols = Math.round((x1 - x0) / cell) + 1;
-    const rows = Math.round((z1 - z0) / cell) + 1;
+    const rows = Math.round((y1 - y0) / cell) + 1;
     const h = new Float32Array(cols * rows).fill(NaN);
     for (let i = 0; i < pos.length; i += 3) {
       const c = Math.round((pos[i] - x0) / cell);
-      const r = Math.round((pos[i + 2] - z0) / cell);
-      h[r * cols + c] = pos[i + 1] + info.z;
+      const r = Math.round((pos[i + 1] - y0) / cell);
+      h[r * cols + c] = pos[i + 2] + info.z;
     }
     /* Газарзүйн координатыг эх цэгийн орон нутгийн (зүүн, хойд) метр рүү
        хөрвүүлэх WGS84-ийн муруйлтын радиусууд */
@@ -1239,7 +1271,7 @@ export default function MineScene() {
     /** lon/lat -> мэшийн гадаргуугийн абсолют өндөр (мэшээс гадна бол NaN) */
     return (lon: number, lat: number) => {
       const fc = ((lon - info.lon) * kE - x0) / cell;
-      const fr = (-(lat - info.lat) * kN - z0) / cell;
+      const fr = ((lat - info.lat) * kN - y0) / cell;
       const c = Math.floor(fc), r = Math.floor(fr);
       if (c < 0 || r < 0 || c >= cols - 1 || r >= rows - 1) return NaN;
       const tc = fc - c, tr = fr - r;
@@ -1444,7 +1476,20 @@ export default function MineScene() {
          Урьд нь газрын зургаас тавьсан шүүлтийг зөвхөн Esc товч арилгадаг
          байсан тул хэрэглэгч гацдаг байв. */
       if (!h) { clearAll(); return; }
-      if (h.kind === "blocks" || h.kind === "hazard" || h.kind === "truckAlert" ||
+      if (h.kind === "blocks") {
+        /* Блок дээр дарахад — зүүн талын картад бүх талбар. Ижил блок дээр
+           дахин дарвал цуцлагдана (бусад сонголттой адил toggle). */
+        const meta = blockInfo.current;
+        const { slice } = blkRef.current;
+        const { m: mm, lang: lg } = stateRef.current;
+        const data = await blockCache.current[mm]?.catch(() => null);
+        const b = meta && data && h.mapPoint ? pickBlock(data, meta, slice, h.mapPoint, view) : -1;
+        if (!meta || !data || b < 0) return;
+        const d = blockDetail(data, meta, b, lg, ROMAN, fmt);
+        setSel((prev) => (prev?.kind === "block" && prev.id === d.id ? null : { kind: "block", ...d }));
+        return;
+      }
+      if (h.kind === "hazard" || h.kind === "truckAlert" ||
           h.kind === "truck" || h.kind === "excavator") return;
       if (h.kind === "pitmesh") { toggleIsolate(); return; }
       if (h.kind === "bld") {
@@ -1546,8 +1591,8 @@ export default function MineScene() {
       /* Курсорын доорх ГАНЦ блок: гадаргуу дээрх цэгээс харах чиглэлийн
          дагуу бага зэрэг дотогш орж, тэр нүдний блокийг торноос хайна. */
       const meta = blockInfo.current, view = viewRef.current;
-      const { period, slice } = blkRef.current;
-      const data = await blockCache.current[period ?? mm]?.catch(() => null);
+      const { slice } = blkRef.current;
+      const data = await blockCache.current[mm]?.catch(() => null);
       if (!isCurrent()) return;
       const b = meta && data && view && h.mapPoint ? pickBlock(data, meta, slice, h.mapPoint, view) : -1;
       if (!meta || !data || b < 0) { setTip(null); return; }
@@ -1565,7 +1610,7 @@ export default function MineScene() {
                  { label: tx.density, value: `${data.bd[b].toFixed(2)} ${tx.densityU}` },
                  { label: tx.mass, value: `${fmt(sx * sy * sz * data.bd[b], 0)} ${tx.massU}` },
                  { label: tx.size, value: `${sx} × ${sy} × ${sz} м` },
-               ], hint: tx.hint });
+               ], hint: `${tx.hint} · ${tx.clickHint}` });
       return;
     }
     if (h.kind === "pitmesh") {
@@ -1690,13 +1735,24 @@ export default function MineScene() {
     rebuildFlow();          /* машины тоо сарын тонноор өөрчлөгдөнө */
   }, [m, ready]); // eslint-disable-line
 
-  /* Блокийн хугацаа / зүсэлт өөрчлөгдөхөд — гулсуулагчийг чирэх үед
+  /* Блокийн зүсэлт өөрчлөгдөхөд — гулсуулагчийг чирэх үед
      кадр бүрт нэг л удаа дахин зурна */
   useEffect(() => {
     if (!ready) return;
     if (blockFrame.current !== null) cancelAnimationFrame(blockFrame.current);
     blockFrame.current = requestAnimationFrame(() => { blockFrame.current = null; void showBlocks(); });
-  }, [blkPeriod, blkSlice, ready]); // eslint-disable-line
+  }, [blkSlice, ready]); // eslint-disable-line
+
+  /* Зүсэлт сонгоход блок харагдахгүй байвал (энгийн горим, давхарга
+     унтраалттай) Open pit горим руу шилжиж, блокийн давхаргыг асаана */
+  function changeSlice(next: BlockSlice) {
+    if (next.mode !== "off") {
+      if (!isoRef.current) applyIsolate(true);
+      const L = layersRef.current;
+      if (L.blocks && !L.blocks.visible) { L.blocks.visible = true; syncVisible(); }
+    }
+    setBlkSlice(next);
+  }
 
   /* Өөрчлөлтийн тодруулгыг асаах / унтраах */
   useEffect(() => {
@@ -1761,6 +1817,11 @@ export default function MineScene() {
     <>
       {/* Газрын зургийн товчнууд — Esri-ийн зүүн дээд баганад, суурь
           зургийн дүрсийн доор. Нэрийг нь title-д үлдээв. */}
+      {createPortal(
+        <BlockSlicePanel meta={blockInfo.current} period={m} lang={lang}
+                         slice={blkSlice} onSlice={changeSlice} />,
+        sliceHost,
+      )}
       {createPortal(
         <>
           <button className="esri-widget--button" aria-pressed={isolated} onClick={toggleIsolate}
@@ -1880,14 +1941,9 @@ export default function MineScene() {
         {isolated && hasBlocks && visible.blocks && blockInfo.current && (
           <BlockLegend
             meta={blockInfo.current}
-            period={blkPeriod ?? m}
-            pinned={blkPeriod !== null}
-            month={m}
+            period={m}
             lang={lang}
-            onPeriod={(p) => setBlkPeriod(p === m ? null : p)}
-            onFollow={() => setBlkPeriod(null)}
-            slice={blkSlice}
-            onSlice={setBlkSlice}
+            onPeriod={setM}
           />
         )}
 

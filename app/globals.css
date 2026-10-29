@@ -153,6 +153,10 @@ body.dragging *{pointer-events:none}
    `flex-grow` хэвээр тул харагдац нь урьдын адил үлдэнэ. */
 .col.scroll{overflow-y:auto;overflow-x:hidden}
 .col.scroll > .panel.grow{flex:1 0 auto;min-height:var(--growmin,260px)}
+/* Дээд талын карт урт агуулгын улмаас хэзээ ч шахагдахгүй; блокийн
+   дэлгэрэнгүй (талбар олон) нь картынхаа дотор гүйлгэгдэнэ */
+.col.scroll > .panel:not(.grow){flex-shrink:0}
+.col.scroll > .panel.grow:has(.bdet){flex:1 1 0}
 .panel{background:var(--surface);border:1px solid var(--line-soft);border-radius:var(--r);
   display:flex;flex-direction:column;min-height:0;min-width:0;overflow:hidden}
 .ph{display:flex;align-items:center;gap:8px;padding:6px 10px 5px;border-bottom:1px solid var(--line-soft);flex:none}
@@ -477,10 +481,10 @@ body.isolated .blksum b,body.isolated .blkrow b{color:#e6edf3}
 .block-legend .block-legend__label{display:flex;justify-content:space-between;align-items:center;gap:8px;
   margin:10px 0 5px;color:#94a6b7;font-size:9.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase}
 .block-legend .block-legend__label b{color:#eaf0f5;font:500 10.5px/1 "IBM Plex Mono",monospace;letter-spacing:0;text-transform:none}
-.block-legend .block-legend__label--slice{margin-top:8px;padding-top:9px;border-top:1px solid #2c3946}
-.block-legend .block-legend__link{padding:0;border:0;background:none;color:#5fd3c3;font:500 10px/1.2 "Golos Text",sans-serif;
-  letter-spacing:0;text-transform:none;cursor:pointer}
-.block-legend .block-legend__link:hover{text-decoration:underline}
+/* Зүсэлтийн самбар — Esri Expand дотор (суурь зургийн дүрсийн доорх икон) */
+.block-legend.block-legend--pop{position:static;width:248px;max-width:none;max-height:none;overflow:visible}
+.block-legend--pop .block-legend__header{margin-bottom:10px}
+.block-legend--pop .block-legend__note{margin:0;color:#94a8ba;font-size:10.5px;line-height:1.6}
 .block-legend .block-legend__periods,.block-legend .block-legend__seg{display:grid;gap:3px;padding:2px;border-radius:7px;background:#1b2632;border:1px solid #2c3946}
 .block-legend .block-legend__periods{grid-template-columns:repeat(5,1fr);margin-bottom:2px}
 .block-legend .block-legend__seg{grid-template-columns:repeat(4,1fr)}
@@ -489,9 +493,6 @@ body.isolated .blksum b,body.isolated .blkrow b{color:#e6edf3}
 .block-legend .block-legend__seg button{font-family:"Golos Text",sans-serif;font-size:10.5px}
 .block-legend .block-legend__periods button:hover,.block-legend .block-legend__seg button:hover{color:#f0f6fa;background:#24313e}
 .block-legend .block-legend__periods button[aria-pressed="true"],.block-legend .block-legend__seg button[aria-pressed="true"]{background:#23b7a5;color:#061b20;font-weight:600}
-/* Толгойн сонгосон сартай таарах хугацаа — доор жижиг цэг */
-.block-legend .block-legend__periods button.is-month::after{content:"";position:absolute;left:50%;bottom:1px;width:3px;height:3px;
-  margin-left:-1.5px;border-radius:50%;background:currentColor;opacity:.8}
 .block-legend .block-legend__slice{display:flex;flex-direction:column;gap:6px;margin-top:7px}
 .block-legend .block-legend__slice input[type="range"]{width:100%;accent-color:#23b7a5}
 .block-legend .block-legend__slice label{display:flex;align-items:center;gap:6px;color:#b9c7d3;font-size:10.5px;cursor:pointer}
@@ -597,6 +598,20 @@ body.isolated .blksum b,body.isolated .blkrow b{color:#e6edf3}
   font:500 10.5px/1.5 "IBM Plex Mono",monospace;color:var(--ink-3)}
 .blkchips button[aria-pressed="true"]{background:var(--ui-soft);border-color:var(--ui-soft);color:var(--ui-ink)}
 .dtable{flex:1;min-height:0;overflow-y:auto}
+/* Блокийн дэлгэрэнгүй (зүүн талын карт) */
+.bdet{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:10px;padding-right:2px}
+.bdet-head{display:flex;align-items:flex-start;gap:9px;padding-bottom:9px;border-bottom:1px solid var(--line-soft)}
+.bdet-head > i{flex:none;width:12px;height:12px;margin-top:3px;border-radius:3px;box-shadow:inset 0 0 0 1px #ffffff30}
+.bdet-head b{display:block;color:var(--ink);font-size:13px;font-weight:600;line-height:1.3}
+.bdet-head small{display:block;margin-top:3px;color:var(--ink-3);font:500 10.5px/1.35 "IBM Plex Mono",monospace}
+.bdet h4{margin:0 0 4px;color:var(--ink-3);font-size:9.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase}
+.bdet dl{margin:0;display:flex;flex-direction:column}
+.bdet dl > div{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:baseline;padding:4px 0;border-bottom:1px dashed var(--line-soft)}
+.bdet dl > div:last-child{border-bottom:0}
+.bdet dt{color:var(--ink-2);font-size:11.5px;min-width:0}
+.bdet dt small{display:block;margin-top:1px;color:var(--ink-3);font:500 9.5px/1.2 "IBM Plex Mono",monospace}
+.bdet dd{margin:0;display:flex;align-items:center;gap:6px;color:var(--ink);font:500 11.5px/1.3 "IBM Plex Mono",monospace;text-align:right;white-space:nowrap}
+.bdet dd > i{width:8px;height:8px;border-radius:2px}
 table{width:100%;border-collapse:collapse}
 th{position:sticky;top:0;background:var(--surface);text-align:right;font-size:9px;color:var(--ink-3);
   font-weight:600;letter-spacing:.05em;text-transform:uppercase;padding:0 6px 6px;

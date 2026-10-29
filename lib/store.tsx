@@ -3,11 +3,13 @@
 import { createContext, useContext, useEffect, useMemo, useState,
          type Dispatch, type ReactNode, type SetStateAction } from "react";
 import { T, type Lang, type Dict } from "./i18n";
+import type { BlockDetail } from "./blockModel";
 
 /** Баруун талын картад юу харуулах вэ */
 export type Selection =
   | { kind: "bench"; tuv: number }
   | { kind: "dest"; ci: number; title: string; featName: string }
+  | ({ kind: "block" } & BlockDetail)
   | null;
 
 export interface TipRow {
@@ -41,7 +43,7 @@ interface Store {
   lang: Lang;
   setLang: (l: Lang) => void;
   sel: Selection;
-  setSel: (s: Selection) => void;
+  setSel: Dispatch<SetStateAction<Selection>>;
   blk: string | null;
   setBlk: (b: string | null) => void;
   /* ArcGIS Dashboard-ийн зарчим: сонгогдсон элемент дээр ДАХИН дарахад

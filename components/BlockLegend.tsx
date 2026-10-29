@@ -7,24 +7,18 @@ import { BLOCK_TEXT, SLAB_CELLS, sliceValue, type BlockModelMeta, type BlockSlic
 
 export interface BlockLegendProps {
   meta: BlockModelMeta;
-  /** Харуулж буй блокийн хугацаа (сарын дугаар — «II → III» бол 3) */
+  /** Харуулж буй блокийн хугацаа = сонгосон сар («II → III» бол 3) */
   period: number;
-  /** Хэрэглэгч хугацааг толгойн сараас тусад нь тогтоосон эсэх */
-  pinned: boolean;
-  /** Толгойн сонгосон сар */
-  month: number;
   lang: Lang;
+  /** Хугацаа сонгоход сарыг солино — сарын мөр, блокийн самбар хоёр нэг төлөвтэй */
   onPeriod: (period: number) => void;
-  onFollow: () => void;
-  slice: BlockSlice;
-  onSlice: (slice: BlockSlice) => void;
 }
 
 const value = (number: number, decimals = 0) => number === 0 ? "0" : fmt(number, decimals);
 const span = (from: number, to: number, sep = " → ") => `${ROMAN[from - 1] ?? from}${sep}${ROMAN[to - 1] ?? to}`;
 
 export default function BlockLegend({
-  meta, period, pinned, month, lang, onPeriod, onFollow, slice, onSlice,
+  meta, period, lang, onPeriod,
 }: BlockLegendProps) {
   const t = T[lang];
   const tx = BLOCK_TEXT[lang];
@@ -48,20 +42,6 @@ export default function BlockLegend({
   });
   const toggleLabel = collapsed ? (isMn ? "Дэлгэх" : "Expand") : (isMn ? "Нуух" : "Collapse");
 
-  const modes: { m: SliceMode; n: string }[] = [
-    { m: "off", n: isMn ? "Үгүй" : "Off" },
-    { m: "z", n: isMn ? "Хэвтээ" : "Plan" },
-    { m: "i", n: isMn ? "Дагуу" : "Long" },
-    { m: "j", n: isMn ? "Хөндлөн" : "Cross" },
-  ];
-  const axis = slice.mode === "i" ? 0 : slice.mode === "j" ? 1 : 2;
-  const steps = monthData ? monthData.dims[axis] : 1;
-  const sv = monthData && slice.mode !== "off" ? sliceValue(monthData, meta, slice) : 0;
-  /* Нэг үе сонгосон бол мужаар нь (RL 1243–1258 м), эс бол зүсэлтийн түвшин */
-  const svLo = sv - SLAB_CELLS * meta.cell[axis];
-  const svText = slice.slab ? `${fmt(svLo, 0)}–${fmt(sv, 0)}` : fmt(sv, 0);
-  const sliceLabel = slice.mode === "z" ? `RL ${svText} м` : `${svText} м`;
-
   return (
     <aside className={`block-legend${monthData ? "" : " block-legend--empty"}${collapsed ? " block-legend--collapsed" : ""}`}
            aria-label={`${t.blkTitle} · ${badgeTitle}`}>
@@ -79,21 +59,15 @@ export default function BlockLegend({
       </header>
 
       <div id="block-legend-body" className="block-legend__body" hidden={collapsed}>
-        {/* Хугацаа — толгойн сараас хамааралгүйгээр өөр сарын блокийг харна */}
+        {/* Хугацаа — сонгоход газрын зураг доорх сарын мөр ч хамт солигдоно */}
         <div className="block-legend__label">
           <span>{isMn ? "Хугацаа" : "Period"}</span>
-          {pinned && (
-            <button type="button" className="block-legend__link" onClick={onFollow}>
-              {isMn ? `${ROMAN[month - 1]} сартай холбох` : `Follow month ${ROMAN[month - 1]}`}
-            </button>
-          )}
         </div>
         <div className="block-legend__periods" role="group" aria-label={isMn ? "Хугацаа" : "Period"}>
           {periods.map((p) => {
             const d = meta.months[String(p)];
             return (
               <button key={p} type="button" aria-pressed={p === period}
-                      className={p === month ? "is-month" : undefined}
                       title={`${MON_L[lang][d.from - 1]} → ${MON_L[lang][d.to - 1]}`}
                       onClick={() => onPeriod(p)}>
                 {span(d.from, d.to, "→")}
@@ -130,34 +104,6 @@ export default function BlockLegend({
               })}
             </ul>
 
-            {/* Зүсэлт — зүссэн нүүр нь доторх блокуудын өнгөөр харагдана */}
-            <div className="block-legend__label block-legend__label--slice">
-              <span>{isMn ? "Зүсэлт" : "Slice"}</span>
-              {slice.mode !== "off" && <b>{sliceLabel}</b>}
-            </div>
-            <div className="block-legend__seg" role="group" aria-label={isMn ? "Зүсэлт" : "Slice"}>
-              {modes.map(({ m, n }) => (
-                <button key={m} type="button" aria-pressed={slice.mode === m}
-                        onClick={() => onSlice({ ...slice, mode: m, pos: slice.mode === "off" ? 0.6 : slice.pos })}>
-                  {n}
-                </button>
-              ))}
-            </div>
-            {slice.mode !== "off" && (
-              <div className="block-legend__slice">
-                <input type="range" min={0} max={1} step={1 / Math.max(steps, 1)} value={slice.pos}
-                       aria-label={sliceLabel}
-                       onChange={(e) => onSlice({ ...slice, pos: Number(e.target.value) })} />
-                <label>
-                  <input type="checkbox" checked={slice.slab}
-                         onChange={(e) => onSlice({ ...slice, slab: e.target.checked })} />
-                  {slice.mode === "z"
-                    ? (isMn ? "Зөвхөн нэг шат (15 м)" : "Single bench (15 m)")
-                    : (isMn ? "Зөвхөн нэг огтлол (20 м)" : "Single section (20 m)")}
-                </label>
-              </div>
-            )}
-
             <footer className="block-legend__footer"><span>{value(monthData.blocks)} {isMn ? "блок" : "blocks"}</span><span>Micromine</span></footer>
           </>
         ) : (
@@ -171,5 +117,69 @@ export default function BlockLegend({
         )}
       </div>
     </aside>
+  );
+}
+
+/** Блок моделийн зүсэлт — газрын зургийн зүүн дээд буланд, суурь зургийн
+ *  дүрсийн доорх «зүсэлт» дүрсийг дарахад нээгдэнэ (Esri Expand-ийн агуулга).
+ *  Зүссэн нүүр нь доторх блокуудын өнгөөр харагдана. */
+export function BlockSlicePanel({ meta, period, lang, slice, onSlice }: {
+  meta: BlockModelMeta | null;
+  period: number;
+  lang: Lang;
+  slice: BlockSlice;
+  onSlice: (slice: BlockSlice) => void;
+}) {
+  const isMn = lang === "mn";
+  const monthData = meta?.months[String(period)] ?? null;
+  const modes: { m: SliceMode; n: string }[] = [
+    { m: "off", n: isMn ? "Үгүй" : "Off" },
+    { m: "z", n: isMn ? "Хэвтээ" : "Plan" },
+    { m: "i", n: isMn ? "Дагуу" : "Long" },
+    { m: "j", n: isMn ? "Хөндлөн" : "Cross" },
+  ];
+  const axis = slice.mode === "i" ? 0 : slice.mode === "j" ? 1 : 2;
+  const steps = monthData ? monthData.dims[axis] : 1;
+  const sv = meta && monthData && slice.mode !== "off" ? sliceValue(monthData, meta, slice) : 0;
+  /* Нэг үе сонгосон бол мужаар нь (RL 1243–1258 м), эс бол зүсэлтийн түвшин */
+  const svLo = meta ? sv - SLAB_CELLS * meta.cell[axis] : sv;
+  const svText = slice.slab ? `${fmt(svLo, 0)}–${fmt(sv, 0)}` : fmt(sv, 0);
+  const sliceLabel = slice.mode === "z" ? `RL ${svText} м` : `${svText} м`;
+
+  return (
+    <div className="block-legend block-legend--pop">
+      <header className="block-legend__header">
+        <div><span className="block-legend__eyebrow">{isMn ? "БЛОК МОДЕЛЬ" : "BLOCK MODEL"}</span><h3>{isMn ? "Зүсэлт" : "Slice"}</h3></div>
+        {slice.mode !== "off" && monthData && <span className="block-legend__period">{sliceLabel}</span>}
+      </header>
+      {monthData ? (
+        <>
+          <div className="block-legend__seg" role="group" aria-label={isMn ? "Зүсэлт" : "Slice"}>
+            {modes.map(({ m, n }) => (
+              <button key={m} type="button" aria-pressed={slice.mode === m}
+                      onClick={() => onSlice({ ...slice, mode: m, pos: slice.mode === "off" ? 0.6 : slice.pos })}>
+                {n}
+              </button>
+            ))}
+          </div>
+          {slice.mode !== "off" && (
+            <div className="block-legend__slice">
+              <input type="range" min={0} max={1} step={1 / Math.max(steps, 1)} value={slice.pos}
+                     aria-label={sliceLabel}
+                     onChange={(e) => onSlice({ ...slice, pos: Number(e.target.value) })} />
+              <label>
+                <input type="checkbox" checked={slice.slab}
+                       onChange={(e) => onSlice({ ...slice, slab: e.target.checked })} />
+                {slice.mode === "z"
+                  ? (isMn ? "Зөвхөн нэг шат (15 м)" : "Single bench (15 m)")
+                  : (isMn ? "Зөвхөн нэг огтлол (20 м)" : "Single section (20 m)")}
+              </label>
+            </div>
+          )}
+        </>
+      ) : (
+        <p className="block-legend__note">{T[lang].blkNone}</p>
+      )}
+    </div>
   );
 }

@@ -38,6 +38,19 @@ export const SVC = {
   bldFS: `${AGOL}/Multipatch_EMC/FeatureServer/0`,
 } as const;
 
+/** Ил уурхайн САР БҮРИЙН гадаргуу — маркшейдерийн DWG-ийн multipatch-ийг
+ *  AGOL-д 3D object давхарга болгон publish хийсэн. Хөтөч гадаргууг холбогдох
+ *  FeatureServer-ээс татаж, питийн 5 м-ийн торонд буулгана (lib/pitSource.ts).
+ *  Шинэ сар нэмэхдээ энд мөр нэмэхэд хангалттай. */
+export const PIT_SVC: Record<number, string> = {
+  1: `${AGOL}/CMK_202301_1/FeatureServer/0`,
+  2: `${AGOL}/CMK_202302/FeatureServer/0`,
+  3: `${AGOL}/CMK_202303/FeatureServer/0`,
+  4: `${AGOL}/CMK_202304/FeatureServer/0`,
+  5: `${AGOL}/CMK_202305/FeatureServer/0`,
+  6: `${AGOL}/CMK_202306/FeatureServer/0`,
+};
+
 /** Excel-ийн 15 утгын багана (D..R) -> индекс */
 export const C = {
   NOOC: 0, BU_U: 1, AGU: 2, BOH: 3, HAY: 4, BOHP: 5, BU: 6,

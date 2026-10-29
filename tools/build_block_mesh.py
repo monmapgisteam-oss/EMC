@@ -63,6 +63,7 @@ CLASSES = [
 DOMAINS = ["diss_cu", "stw_cu", "mixed_cu", "mixed_py", "py", "leach_cap"]
 TYPES = ["fr", "tr", "ox"]
 RCLASS = ["mea", "ind", "inf", "min_pot"]
+PROJECTS = ["NW", "CEN"]
 
 
 def read_dat(path):
@@ -118,7 +119,10 @@ def code(col, table):
 def write_bin(path, cols):
     """Багана бүрийг дараалан бичнэ (struct-of-arrays). Хөтөч дээр шууд
     TypedArray болгон уншихын тулд 4 байтынхыг эхэнд, дараа нь 2, 1 байтынх.
-      f32: cu, mo, bd · u16: i, j, k · u8: di, dj, dk, dom, typ, rc"""
+      f32: cu, mo, bd · u16: i, j, k · u8: di, dj, dk, dom, typ, rc
+    Дараа нь (блок дээр дарахад харуулах нэмэлт талбарууд):
+      f32: cui, cuo, cuoi · u8: project
+    u8-ын 6 багана нийт 24·n байт тул нэмэлт f32 4 байтаар зэрэгцсэн хэвээр."""
     with open(path, "wb") as f:
         for arr in cols:
             f.write(np.ascontiguousarray(arr).tobytes())
@@ -129,8 +133,10 @@ def main():
     cos_t, sin_t = math.cos(math.radians(ROT_DEG)), math.sin(math.radians(ROT_DEG))
     out = {
         "classes": [{"min": c[0], "color": c[1]} for c in CLASSES],
-        "domains": DOMAINS, "types": TYPES, "rclass": RCLASS,
+        "domains": DOMAINS, "types": TYPES, "rclass": RCLASS, "projects": PROJECTS,
         "cell": list(CELL),
+        # Micromine-ийн локал тор: эх цэг, эргүүлэлтийн тэнхлэг ба өнцөг (локал -> UTM)
+        "grid": {"origin": list(ORIGIN), "pivot": list(PIVOT), "rot": ROT_DEG},
         "months": {},
     }
     for path in sorted(glob.glob(os.path.join(SRC, "Assign_BM_2023_*_*.DAT"))):
@@ -161,6 +167,8 @@ def main():
             (i0 - lo[0]).astype("<u2"), (j0 - lo[1]).astype("<u2"), (k0 - lo[2]).astype("<u2"),
             di.astype(np.uint8), dj.astype(np.uint8), dk.astype(np.uint8),
             code(rec["DOMAIN"], DOMAINS), code(rec["TYPE"], TYPES), code(rec["CLASS"], RCLASS),
+            rec["CUI"].astype("<f4"), rec["CUO"].astype("<f4"), rec["CUOI"].astype("<f4"),
+            code(rec["Project"], PROJECTS),
         ])
 
         vol = sx * sy * sz
@@ -175,6 +183,9 @@ def main():
             "axisI": [round(CELL[0] * cos_t, 6), round(CELL[0] * sin_t, 6)],
             "axisJ": [round(-CELL[1] * sin_t, 6), round(CELL[1] * cos_t, 6)],
             "rl0": ORIGIN[2] + float(lo[2]) * CELL[2],
+            # торны (0,0,0) нүдний Micromine-ийн индекс — блокийн эх координатыг сэргээнэ
+            "lo": [int(v) for v in lo],
+            "assign": np.char.strip(rec["Assign2023"][0]).decode() if rec.size else None,
             "kt": round(float(t.sum()) / 1e3, 1), "km3": round(float(vol.sum()) / 1e3, 1),
             "cu": round(float((cu * t).sum() / t.sum()), 3),
             "mo": round(float((mo * t).sum() / t.sum()), 4),

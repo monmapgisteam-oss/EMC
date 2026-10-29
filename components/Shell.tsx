@@ -248,6 +248,7 @@ function DetailCardTitle() {
   const { sel, t } = useStore();
   if (!sel) return <h2>{t.dBench}</h2>;
   if (sel.kind === "bench") return <h2>{`${t.dBench} ${sel.tuv} м`}</h2>;
+  if (sel.kind === "block") return <h2>{t.blkTitle}</h2>;
   return <h2>{sel.title}</h2>;
 }
 

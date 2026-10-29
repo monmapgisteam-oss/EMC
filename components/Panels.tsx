@@ -310,6 +310,33 @@ export function DetailCard() {
     return <BenchDetail key={`${m}:${sel.tuv}:${blk ?? ""}`} level={sel.tuv} />;
   }
 
+  /* Газрын зураг дээрх блок — Micromine-ийн бүх талбар бүлгээр */
+  if (sel.kind === "block") {
+    return (
+      <div className="pb">
+        <div className="bdet">
+          <header className="bdet-head">
+            <i style={{ background: sel.color }} aria-hidden="true" />
+            <div><b>{sel.title}</b><small>{sel.sub}</small></div>
+          </header>
+          {sel.groups.map((g) => (
+            <section key={g.title}>
+              <h4>{g.title}</h4>
+              <dl>
+                {g.rows.map((r) => (
+                  <div key={r.label}>
+                    <dt>{r.label}{r.code && <small>{r.code}</small>}</dt>
+                    <dd>{r.color && <i style={{ background: r.color }} aria-hidden="true" />}{r.value}</dd>
+                  </div>
+                ))}
+              </dl>
+            </section>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
   const ci = sel.ci;
   const isM3 = ci === C.HOOSON || ci === C.TSUL;
   const rows = ELEV.map((e) => [e, sumCol(m, ci, e), metalSum(m, "cu", ci, e), metalSum(m, "mo", ci, e)] as const)
